@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════════════════════
-   OmniHome — app.js  (Multi-Device Edition)
-   Pure JS + MQTT.js  |  No backend  |  No database
+   Ellectra — app.js  (Firebase Auth + Multi-Device MQTT)
+   Pure JS + MQTT.js + Firebase SDK  |  No backend required
    ══════════════════════════════════════════════════════════════ */
 
 'use strict';
@@ -8,7 +8,7 @@
 /* ─── BROKER CONFIG ─────────────────────────────────────── */
 const BROKER_URL  = 'wss://broker.emqx.io:8084/mqtt';
 const BROKER_OPTS = () => ({
-  clientId: 'omnihome_web_' + Math.random().toString(36).slice(2, 9),
+  clientId: 'ellectra_web_' + Math.random().toString(36).slice(2, 9),
   username: '',
   password: '',
   keepalive: 30,
@@ -17,71 +17,104 @@ const BROKER_OPTS = () => ({
   clean: true,
 });
 
-/* ─── MULTI-DEVICE STATE ────────────────────────────────── */
+/* ─── STATE ─────────────────────────────────────────────── */
 /*
   devices: Map<deviceId, {
-    id: string,
-    secret: string,
-    mqttClient: MqttClient | null,
-    ledState: boolean | null,
-    lastHeartbeat: Date | null,
-    brokerStatus: 'offline'|'connecting'|'online',
-    deviceStatus: 'offline'|'online',
-    stats: { online, led, uptime, lastSeen, heartbeat }
-    logEntries: Array<{type, msg, ts}>
+    id, secret, nickname,
+    mqttClient, ledState, lastHeartbeat,
+    brokerStatus, deviceStatus,
+    stats: { online, led, uptime, lastSeen, heartbeat },
+    logEntries: []
   }>
 */
 const devices = new Map();
 let activeDeviceId = null;
+let currentUser    = null;
+let firestoreUnsub = null;   // Firestore snapshot unsubscribe
 
 /* ─── DOM REFS ──────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
 
-const screenPair       = $('screenPair');
-const screenDash       = $('screenDash');
-const deviceInput      = $('deviceInput');
-const secretInput      = $('secretInput');
-const pairBtn          = $('pairBtn');
-const brokerDot        = $('brokerDot');
-const brokerLabel      = $('brokerLabel');
-const deviceTabBar     = $('deviceTabBar');
-const addDeviceBtn     = $('addDeviceBtn');
-const disconnectBtn    = $('disconnectBtn');
-const dashDeviceId     = $('dashDeviceId');
-const deviceDot        = $('deviceDot');
-const deviceStatus     = $('deviceStatus');
-const ledBulb          = $('ledBulb');
-const ledStateLabel    = $('ledStateLabel');
-const btnOn            = $('btnOn');
-const btnOff           = $('btnOff');
-const statOnline       = $('statOnline');
-const statLed          = $('statLed');
-const statUptime       = $('statUptime');
-const statLastSeen     = $('statLastSeen');
-const statHeartbeat    = $('statHeartbeat');
-const qrCode           = $('qrCode');
-const qrUrl            = $('qrUrl');
-const copyUrlBtn       = $('copyUrlBtn');
-const logBody          = $('logBody');
-const clearLogBtn      = $('clearLogBtn');
-const toastStack       = $('toastStack');
+const screenAuth        = $('screenAuth');
+const appShell          = $('appShell');
+const googleSignInBtn   = $('googleSignInBtn');
+const signOutBtn        = $('signOutBtn');
+const userAvatar        = $('userAvatar');
+const userName          = $('userName');
+const screenPair        = $('screenPair');
+const screenDash        = $('screenDash');
+const deviceInput       = $('deviceInput');
+const secretInput       = $('secretInput');
+const deviceNickname    = $('deviceNickname');
+const pairBtn           = $('pairBtn');
+const brokerDot         = $('brokerDot');
+const brokerLabel       = $('brokerLabel');
+const deviceList        = $('deviceList');
+const addDeviceBtn      = $('addDeviceBtn');
+const noDeviceSelected  = $('noDeviceSelected');
+const activeDevicePanel = $('activeDevicePanel');
+const disconnectBtn     = $('disconnectBtn');
+const dashDeviceId      = $('dashDeviceId');
+const dashDeviceNick    = $('dashDeviceNick');
+const deviceDot         = $('deviceDot');
+const deviceStatus      = $('deviceStatus');
+const ledBulb           = $('ledBulb');
+const ledStateLabel     = $('ledStateLabel');
+const btnOn             = $('btnOn');
+const btnOff            = $('btnOff');
+const statOnline        = $('statOnline');
+const statLed           = $('statLed');
+const statUptime        = $('statUptime');
+const statLastSeen      = $('statLastSeen');
+const statHeartbeat     = $('statHeartbeat');
+const qrCode            = $('qrCode');
+const qrUrl             = $('qrUrl');
+const copyUrlBtn        = $('copyUrlBtn');
+const logBody           = $('logBody');
+const clearLogBtn       = $('clearLogBtn');
+const toastStack        = $('toastStack');
 
-/* ─── STARTUP ───────────────────────────────────────────── */
-(function init() {
-  const params = new URLSearchParams(window.location.search);
-  const urlDevice = params.get('device');
-  if (urlDevice) {
-    deviceInput.value = urlDevice.trim().toUpperCase();
-    deviceInput.setAttribute('readonly', 'true');
-    secretInput.focus();
-    // If we already have devices, go straight to dash and show pair modal
-    if (devices.size > 0) {
-      showAddDeviceModal();
-      return;
+/* ─── WAIT FOR FIREBASE ─────────────────────────────────── */
+function waitForFirebase() {
+  return new Promise(resolve => {
+    const check = () => window._firebase ? resolve(window._firebase) : setTimeout(check, 50);
+    check();
+  });
+}
+
+/* ─── BOOT ──────────────────────────────────────────────── */
+(async function boot() {
+  const fb = await waitForFirebase();
+
+  // Auth state listener
+  fb.onAuthStateChanged(fb.auth, user => {
+    if (user) {
+      currentUser = user;
+      showApp(user);
+    } else {
+      currentUser = null;
+      showAuthScreen();
     }
-    log(null, 'sys', 'Device ID loaded from URL. Enter your device secret to continue.');
-  }
+  });
 
+  // Google Sign-In
+  googleSignInBtn.addEventListener('click', async () => {
+    const provider = new fb.GoogleAuthProvider();
+    try {
+      await fb.signInWithPopup(fb.auth, provider);
+    } catch (e) {
+      toast('Sign-in failed: ' + e.message, 'error');
+    }
+  });
+
+  // Sign-Out
+  signOutBtn.addEventListener('click', async () => {
+    disconnectAllDevices();
+    if (firestoreUnsub) firestoreUnsub();
+    await fb.signOut(fb.auth);
+  });
+
+  // Other UI listeners
   pairBtn.addEventListener('click', handlePair);
   disconnectBtn.addEventListener('click', handleDisconnect);
   addDeviceBtn.addEventListener('click', showPairScreen);
@@ -92,34 +125,118 @@ const toastStack       = $('toastStack');
     const dev = devices.get(activeDeviceId);
     if (dev) { dev.logEntries = []; renderLog(); }
   });
-
   deviceInput.addEventListener('keydown', e => { if (e.key === 'Enter') secretInput.focus(); });
-  secretInput.addEventListener('keydown', e => { if (e.key === 'Enter') handlePair(); });
+  secretInput.addEventListener('keydown', e => { if (e.key === 'Enter') deviceNickname.focus(); });
+  deviceNickname.addEventListener('keydown', e => { if (e.key === 'Enter') handlePair(); });
+
+  // URL param pre-fill
+  const params = new URLSearchParams(window.location.search);
+  const urlDevice = params.get('device');
+  if (urlDevice) {
+    deviceInput.value = urlDevice.trim().toUpperCase();
+    deviceInput.setAttribute('readonly', 'true');
+  }
 })();
 
-/* ─── PAIR SCREEN TOGGLE ────────────────────────────────── */
-function showPairScreen() {
-  deviceInput.removeAttribute('readonly');
-  deviceInput.value = '';
-  secretInput.value = '';
-  screenDash.classList.add('hidden');
-  screenPair.classList.remove('hidden');
+/* ─── AUTH SCREENS ──────────────────────────────────────── */
+function showAuthScreen() {
+  screenAuth.classList.remove('hidden');
+  appShell.classList.add('hidden');
+  // Disconnect everything if previously connected
+  disconnectAllDevices();
+  devices.clear();
+  activeDeviceId = null;
+  if (firestoreUnsub) { firestoreUnsub(); firestoreUnsub = null; }
 }
 
-/* ─── PAIRING ───────────────────────────────────────────── */
-function handlePair() {
-  const id  = deviceInput.value.trim().toUpperCase();
-  const sec = secretInput.value.trim();
+async function showApp(user) {
+  screenAuth.classList.add('hidden');
+  appShell.classList.remove('hidden');
 
-  if (!id) { toast('Enter a Device ID', 'error'); deviceInput.focus(); return; }
-  if (id.length < 8) { toast('Device ID looks too short', 'error'); deviceInput.focus(); return; }
-  if (!sec) { toast('Enter the Device Secret', 'error'); secretInput.focus(); return; }
-  if (devices.has(id)) { toast('Device already added', 'error'); return; }
+  // Update user badge
+  userAvatar.src = user.photoURL || '';
+  userAvatar.style.display = user.photoURL ? 'block' : 'none';
+  userName.textContent = user.displayName || user.email || '';
 
-  // Create device state
-  const dev = {
-    id,
-    secret: sec,
+  // Load saved devices from Firestore
+  await loadDevicesFromFirestore(user.uid);
+
+  // Show correct screen
+  if (devices.size === 0) {
+    showPairScreen();
+  } else {
+    screenPair.classList.add('hidden');
+    screenDash.classList.remove('hidden');
+    // Auto-select first device
+    const firstId = devices.keys().next().value;
+    setActiveDevice(firstId);
+  }
+}
+
+/* ─── FIRESTORE DEVICE PERSISTENCE ─────────────────────── */
+async function loadDevicesFromFirestore(uid) {
+  const fb = window._firebase;
+  const devicesRef = fb.collection(fb.db, 'users', uid, 'devices');
+
+  // Live listener for realtime sync
+  if (firestoreUnsub) firestoreUnsub();
+  firestoreUnsub = fb.onSnapshot(devicesRef, snapshot => {
+    snapshot.docChanges().forEach(change => {
+      if (change.type === 'added' && !devices.has(change.doc.id)) {
+        const data = change.doc.data();
+        addDeviceFromSaved({ id: change.doc.id, secret: data.secret, nickname: data.nickname || '' });
+      }
+      if (change.type === 'removed' && devices.has(change.doc.id)) {
+        // Removed from another tab/session
+        const dev = devices.get(change.doc.id);
+        if (dev && dev.mqttClient) dev.mqttClient.end(true);
+        devices.delete(change.doc.id);
+        if (change.doc.id === activeDeviceId) {
+          activeDeviceId = null;
+          updateActivePanel();
+        }
+        renderDeviceList();
+      }
+    });
+    renderDeviceList();
+  });
+}
+
+async function saveDeviceToFirestore(dev) {
+  if (!currentUser) return;
+  const fb = window._firebase;
+  try {
+    await fb.setDoc(fb.doc(fb.db, 'users', currentUser.uid, 'devices', dev.id), {
+      secret: dev.secret,
+      nickname: dev.nickname || '',
+      addedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('Firestore save error:', e);
+  }
+}
+
+async function deleteDeviceFromFirestore(deviceId) {
+  if (!currentUser) return;
+  const fb = window._firebase;
+  try {
+    await fb.deleteDoc(fb.doc(fb.db, 'users', currentUser.uid, 'devices', deviceId));
+  } catch (e) {
+    console.error('Firestore delete error:', e);
+  }
+}
+
+/* ─── ADD DEVICE FROM SAVED DATA (no MQTT yet) ─────────── */
+function addDeviceFromSaved({ id, secret, nickname }) {
+  if (devices.has(id)) return;
+  const dev = makeDeviceState(id, secret, nickname);
+  devices.set(id, dev);
+  connectMQTT(id);
+}
+
+function makeDeviceState(id, secret, nickname) {
+  return {
+    id, secret, nickname: nickname || '',
     mqttClient: null,
     ledState: null,
     lastHeartbeat: null,
@@ -128,100 +245,57 @@ function handlePair() {
     stats: { online: '—', led: '—', uptime: '—', lastSeen: '—', heartbeat: '—' },
     logEntries: [],
   };
+}
+
+/* ─── PAIR SCREEN ───────────────────────────────────────── */
+function showPairScreen() {
+  deviceInput.removeAttribute('readonly');
+  deviceInput.value = '';
+  secretInput.value = '';
+  deviceNickname.value = '';
+  screenDash.classList.add('hidden');
+  screenPair.classList.remove('hidden');
+}
+
+/* ─── PAIRING ───────────────────────────────────────────── */
+async function handlePair() {
+  const id   = deviceInput.value.trim().toUpperCase();
+  const sec  = secretInput.value.trim();
+  const nick = deviceNickname.value.trim();
+
+  if (!id)          { toast('Enter a Device ID', 'error');      deviceInput.focus();  return; }
+  if (id.length < 8){ toast('Device ID too short', 'error');    deviceInput.focus();  return; }
+  if (!sec)         { toast('Enter the Device Secret', 'error');secretInput.focus();  return; }
+  if (devices.has(id)) { toast('Device already added', 'error'); return; }
+
+  const dev = makeDeviceState(id, sec, nick);
   devices.set(id, dev);
+
+  // Save to Firestore
+  await saveDeviceToFirestore(dev);
 
   // Switch to dashboard
   screenPair.classList.add('hidden');
   screenDash.classList.remove('hidden');
 
-  // Activate this device
+  renderDeviceList();
   setActiveDevice(id);
-
-  // Connect MQTT for this device
   connectMQTT(id);
+
+  toast(`Device ${nick || id} added`, 'success');
 }
 
+/* ─── DISCONNECT / REMOVE ───────────────────────────────── */
 function handleDisconnect() {
-  if (!activeDeviceId) return;
-  const dev = devices.get(activeDeviceId);
-  if (dev && dev.mqttClient) {
-    dev.mqttClient.end(true);
-  }
-  devices.delete(activeDeviceId);
-  toast(`Device ${activeDeviceId} removed`, 'info');
-
-  if (devices.size === 0) {
-    activeDeviceId = null;
-    screenDash.classList.add('hidden');
-    screenPair.classList.remove('hidden');
-    deviceInput.removeAttribute('readonly');
-    deviceInput.value = '';
-    secretInput.value = '';
-    renderTabs();
-  } else {
-    // Switch to first remaining device
-    const nextId = devices.keys().next().value;
-    setActiveDevice(nextId);
-    renderTabs();
-  }
+  if (activeDeviceId) removeDevice(activeDeviceId);
 }
 
-/* ─── ACTIVE DEVICE ─────────────────────────────────────── */
-function setActiveDevice(id) {
-  activeDeviceId = id;
-  const dev = devices.get(id);
-  if (!dev) return;
-
-  // Update header
-  dashDeviceId.textContent = id;
-
-  // Render tabs
-  renderTabs();
-
-  // Render dashboard content for this device
-  renderDashboard(dev);
-}
-
-/* ─── TAB BAR ───────────────────────────────────────────── */
-function renderTabs() {
-  // Clear existing tabs (keep the add button)
-  const existing = deviceTabBar.querySelectorAll('.dev-tab');
-  existing.forEach(t => t.remove());
-
-  // Insert tabs before the add button
-  devices.forEach((dev, id) => {
-    const tab = document.createElement('button');
-    tab.className = 'dev-tab' + (id === activeDeviceId ? ' active' : '');
-    tab.dataset.deviceId = id;
-
-    const dot = document.createElement('span');
-    dot.className = 'tab-dot status-dot ' + dev.brokerStatus;
-
-    const label = document.createElement('span');
-    label.className = 'tab-label';
-    label.textContent = id.length > 14 ? id.slice(0, 14) + '…' : id;
-
-    const close = document.createElement('button');
-    close.className = 'tab-close';
-    close.title = 'Remove device';
-    close.innerHTML = '✕';
-    close.addEventListener('click', e => {
-      e.stopPropagation();
-      removeDevice(id);
-    });
-
-    tab.appendChild(dot);
-    tab.appendChild(label);
-    tab.appendChild(close);
-    tab.addEventListener('click', () => setActiveDevice(id));
-    deviceTabBar.insertBefore(tab, addDeviceBtn);
-  });
-}
-
-function removeDevice(id) {
+async function removeDevice(id) {
   const dev = devices.get(id);
   if (dev && dev.mqttClient) dev.mqttClient.end(true);
   devices.delete(id);
+
+  await deleteDeviceFromFirestore(id);
   toast(`Device ${id} removed`, 'info');
 
   if (devices.size === 0) {
@@ -229,43 +303,115 @@ function removeDevice(id) {
     screenDash.classList.add('hidden');
     screenPair.classList.remove('hidden');
     deviceInput.removeAttribute('readonly');
-    deviceInput.value = '';
-    secretInput.value = '';
-    renderTabs();
-  } else if (id === activeDeviceId) {
-    const nextId = devices.keys().next().value;
-    setActiveDevice(nextId);
+    renderDeviceList();
   } else {
-    renderTabs();
+    if (id === activeDeviceId) {
+      const nextId = devices.keys().next().value;
+      setActiveDevice(nextId);
+    } else {
+      renderDeviceList();
+    }
   }
+}
+
+function disconnectAllDevices() {
+  devices.forEach(dev => {
+    if (dev.mqttClient) dev.mqttClient.end(true);
+  });
+}
+
+/* ─── ACTIVE DEVICE ─────────────────────────────────────── */
+function setActiveDevice(id) {
+  activeDeviceId = id;
+  const dev = devices.get(id);
+  if (!dev) { updateActivePanel(); return; }
+
+  dashDeviceId.textContent   = id;
+  dashDeviceNick.textContent = dev.nickname || '';
+
+  renderDeviceList();
+  updateActivePanel();
+  renderDashboard(dev);
+}
+
+function updateActivePanel() {
+  if (!activeDeviceId || !devices.has(activeDeviceId)) {
+    noDeviceSelected.classList.remove('hidden');
+    activeDevicePanel.classList.add('hidden');
+  } else {
+    noDeviceSelected.classList.add('hidden');
+    activeDevicePanel.classList.remove('hidden');
+  }
+}
+
+/* ─── DEVICE LIST (sidebar) ─────────────────────────────── */
+function renderDeviceList() {
+  deviceList.innerHTML = '';
+
+  if (devices.size === 0) {
+    deviceList.innerHTML = '<p style="font-size:0.75rem;color:var(--text-3);text-align:center;padding:1rem 0;">No devices yet</p>';
+    return;
+  }
+
+  devices.forEach((dev, id) => {
+    const item = document.createElement('div');
+    item.className = 'dev-item' + (id === activeDeviceId ? ' active' : '');
+    item.dataset.deviceId = id;
+
+    const dot = document.createElement('span');
+    dot.className = 'dev-item-dot status-dot ' + dev.brokerStatus;
+
+    const info = document.createElement('div');
+    info.className = 'dev-item-info';
+
+    const nick = document.createElement('div');
+    nick.className = 'dev-item-nick';
+    nick.textContent = dev.nickname || ('Device ' + id.slice(-4));
+
+    const idEl = document.createElement('div');
+    idEl.className = 'dev-item-id';
+    idEl.textContent = id.length > 16 ? id.slice(0, 16) + '…' : id;
+
+    info.appendChild(nick);
+    info.appendChild(idEl);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'dev-item-remove';
+    removeBtn.title = 'Remove device';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      removeDevice(id);
+    });
+
+    item.appendChild(dot);
+    item.appendChild(info);
+    item.appendChild(removeBtn);
+    item.addEventListener('click', () => setActiveDevice(id));
+
+    deviceList.appendChild(item);
+  });
 }
 
 /* ─── RENDER DASHBOARD FOR ACTIVE DEVICE ───────────────── */
 function renderDashboard(dev) {
-  // Header / broker status
   setBrokerStatus(dev.brokerStatus);
   setDeviceStatus(dev.deviceStatus);
-
-  // LED
   setLed(dev.ledState === true);
 
-  // Stats
   const s = dev.stats;
-  statOnline.textContent  = s.online;
-  statOnline.className    = 'stat-val ' + (s.online === 'Online' ? 'good' : s.online === 'Offline' ? 'bad' : '');
-  statLed.textContent     = s.led;
-  statLed.className       = 'stat-val ' + (s.led === 'ON' ? 'good' : s.led === 'OFF' ? 'warn' : '');
-  statUptime.textContent  = s.uptime;
-  statUptime.className    = 'stat-val';
+  statOnline.textContent   = s.online;
+  statOnline.className     = 'stat-val ' + (s.online === 'Online' ? 'good' : s.online === 'Offline' ? 'bad' : '');
+  statLed.textContent      = s.led;
+  statLed.className        = 'stat-val ' + (s.led === 'ON' ? 'good' : s.led === 'OFF' ? 'warn' : '');
+  statUptime.textContent   = s.uptime;
+  statUptime.className     = 'stat-val';
   statLastSeen.textContent = s.lastSeen;
-  statLastSeen.className  = 'stat-val';
+  statLastSeen.className   = 'stat-val';
   statHeartbeat.textContent = s.heartbeat;
-  statHeartbeat.className = 'stat-val ' + (dev.lastHeartbeat ? 'good' : '');
+  statHeartbeat.className  = 'stat-val ' + (dev.lastHeartbeat ? 'good' : '');
 
-  // QR
   buildQR(dev.id);
-
-  // Log
   renderLog();
 }
 
@@ -273,12 +419,13 @@ function renderDashboard(dev) {
 function connectMQTT(deviceId) {
   const dev = devices.get(deviceId);
   if (!dev) return;
+  if (dev.mqttClient) dev.mqttClient.end(true);
 
   dev.brokerStatus = 'connecting';
   if (deviceId === activeDeviceId) setBrokerStatus('connecting');
-  renderTabs();
+  renderDeviceList();
 
-  log(deviceId, 'sys', `Connecting to ${BROKER_URL} …`);
+  log(deviceId, 'sys', `Connecting to broker…`);
 
   const client = mqtt.connect(BROKER_URL, BROKER_OPTS());
   dev.mqttClient = client;
@@ -286,7 +433,7 @@ function connectMQTT(deviceId) {
   client.on('connect', () => {
     dev.brokerStatus = 'online';
     if (deviceId === activeDeviceId) setBrokerStatus('online');
-    renderTabs();
+    renderDeviceList();
     log(deviceId, 'sys', 'Broker connected ✓');
     if (deviceId === activeDeviceId) toast('Broker connected', 'success');
     subscribeTopics(deviceId);
@@ -295,22 +442,22 @@ function connectMQTT(deviceId) {
   client.on('reconnect', () => {
     dev.brokerStatus = 'connecting';
     if (deviceId === activeDeviceId) setBrokerStatus('connecting');
-    renderTabs();
-    log(deviceId, 'sys', 'Reconnecting …');
+    renderDeviceList();
+    log(deviceId, 'sys', 'Reconnecting…');
   });
 
   client.on('offline', () => {
     dev.brokerStatus = 'offline';
     dev.deviceStatus = 'offline';
     if (deviceId === activeDeviceId) { setBrokerStatus('offline'); setDeviceStatus('offline'); }
-    renderTabs();
+    renderDeviceList();
     log(deviceId, 'err', 'Broker offline');
   });
 
   client.on('error', err => {
     dev.brokerStatus = 'offline';
     if (deviceId === activeDeviceId) setBrokerStatus('offline');
-    renderTabs();
+    renderDeviceList();
     log(deviceId, 'err', 'MQTT error: ' + err.message);
     if (deviceId === activeDeviceId) toast('MQTT error: ' + err.message, 'error');
   });
@@ -323,7 +470,6 @@ function connectMQTT(deviceId) {
 function subscribeTopics(deviceId) {
   const dev = devices.get(deviceId);
   if (!dev || !dev.mqttClient) return;
-
   const topics = [
     `device/${deviceId}/status`,
     `device/${deviceId}/heartbeat`,
@@ -339,7 +485,6 @@ function subscribeTopics(deviceId) {
 
 function handleMessage(deviceId, topic, raw) {
   log(deviceId, 'in', `[${shortTopic(topic)}] ${raw}`);
-
   let data;
   try { data = JSON.parse(raw); } catch { return; }
 
@@ -369,12 +514,12 @@ function updateStatus(deviceId, data) {
   const now = new Date();
 
   const online = data.online === true || data.online === 1;
-  dev.deviceStatus = online ? 'online' : 'offline';
-  dev.stats.online = online ? 'Online' : 'Offline';
+  dev.deviceStatus  = online ? 'online' : 'offline';
+  dev.stats.online  = online ? 'Online' : 'Offline';
 
   const ledOn = data.led === 1 || data.led === true;
-  dev.ledState = ledOn;
-  dev.stats.led = ledOn ? 'ON' : 'OFF';
+  dev.ledState     = ledOn;
+  dev.stats.led    = ledOn ? 'ON' : 'OFF';
 
   if (data.uptime !== undefined) dev.stats.uptime = fmtUptime(data.uptime);
   dev.stats.lastSeen = fmtTime(now);
@@ -386,11 +531,10 @@ function updateStatus(deviceId, data) {
     setLed(ledOn);
     statLed.textContent = dev.stats.led;
     statLed.className   = 'stat-val ' + (ledOn ? 'good' : 'warn');
-    if (data.uptime !== undefined) { statUptime.textContent = dev.stats.uptime; statUptime.className = 'stat-val'; }
+    if (data.uptime !== undefined) { statUptime.textContent = dev.stats.uptime; }
     statLastSeen.textContent = dev.stats.lastSeen;
-    statLastSeen.className   = 'stat-val';
   }
-  renderTabs();
+  renderDeviceList();
 }
 
 /* ─── LED COMMAND ───────────────────────────────────────── */
@@ -400,10 +544,8 @@ function sendLedCommand(deviceId, state) {
     toast('Not connected to broker', 'error');
     return;
   }
-
   const payload = JSON.stringify({ secret: dev.secret, action: 'led', state });
   const topic   = `device/${deviceId}/command`;
-
   dev.mqttClient.publish(topic, payload, { qos: 1 }, err => {
     if (err) {
       log(deviceId, 'err', 'Publish failed: ' + err.message);
@@ -411,9 +553,8 @@ function sendLedCommand(deviceId, state) {
     } else {
       log(deviceId, 'out', `[command] ${payload}`);
       toast(state ? 'LED ON command sent' : 'LED OFF command sent', 'success');
-      // Optimistic UI
-      dev.ledState = state === 1;
-      dev.stats.led = state === 1 ? 'ON' : 'OFF';
+      dev.ledState   = state === 1;
+      dev.stats.led  = state === 1 ? 'ON' : 'OFF';
       if (deviceId === activeDeviceId) {
         setLed(state === 1);
         statLed.textContent = dev.stats.led;
@@ -436,14 +577,13 @@ function setLed(on) {
   }
 }
 
-/* ─── BROKER / DEVICE STATUS UI ─────────────────────────── */
+/* ─── STATUS UI ──────────────────────────────────────────── */
 function setBrokerStatus(state) {
   brokerDot.className = 'status-dot';
   if (state === 'online')      { brokerDot.classList.add('online');     brokerLabel.textContent = 'Connected'; }
   else if (state === 'connecting') { brokerDot.classList.add('connecting'); brokerLabel.textContent = 'Connecting…'; }
   else                          { brokerLabel.textContent = 'Disconnected'; }
 }
-
 function setDeviceStatus(state) {
   deviceDot.className = 'status-dot';
   if (state === 'online')      { deviceDot.classList.add('online');     deviceStatus.textContent = 'Online'; }
@@ -462,18 +602,16 @@ function buildQR(deviceId) {
     correctLevel: QRCode.CorrectLevel.M,
   });
 }
-
 function handleCopyUrl() {
   const url = `${location.origin}${location.pathname}?device=${activeDeviceId}`;
   navigator.clipboard.writeText(url)
     .then(() => toast('Link copied!', 'success'))
-    .catch(() => toast('Copy failed — use the URL above', 'error'));
+    .catch(() => toast('Copy failed', 'error'));
 }
 
 /* ─── LOG ────────────────────────────────────────────────── */
 function log(deviceId, type, msg) {
   const entry = { type, msg, ts: new Date() };
-
   if (deviceId) {
     const dev = devices.get(deviceId);
     if (dev) {
@@ -481,17 +619,13 @@ function log(deviceId, type, msg) {
       if (dev.logEntries.length > 120) dev.logEntries.shift();
     }
   }
-
-  if (deviceId === activeDeviceId || deviceId === null) {
-    appendLogEntry(entry);
-  }
+  if (deviceId === activeDeviceId || deviceId === null) appendLogEntry(entry);
 }
 
 function appendLogEntry(entry) {
   const empty = logBody.querySelector('.log-empty');
   if (empty) empty.remove();
-
-  const el   = document.createElement('div');
+  const el = document.createElement('div');
   el.className = `log-entry ${entry.type}`;
   const ts   = entry.ts.toTimeString().slice(0, 8);
   const dirs = { in: '↓IN ', out: '↑OUT', sys: 'SYS ', err: 'ERR ' };
@@ -499,7 +633,6 @@ function appendLogEntry(entry) {
     `<span class="log-time">${ts}</span>` +
     `<span class="log-dir ${entry.type}">${dirs[entry.type] || entry.type.toUpperCase()}</span>` +
     `<span class="log-msg">${escHtml(entry.msg)}</span>`;
-
   logBody.appendChild(el);
   logBody.scrollTop = logBody.scrollHeight;
   while (logBody.children.length > 120) logBody.removeChild(logBody.firstChild);
@@ -530,7 +663,6 @@ function toast(msg, type = 'info') {
 /* ─── HELPERS ────────────────────────────────────────────── */
 function topicType(topic)  { const p = topic.split('/'); return p[p.length - 1]; }
 function shortTopic(topic) { const p = topic.split('/'); return p.slice(-2).join('/'); }
-
 function fmtUptime(seconds) {
   if (seconds < 60)   return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
@@ -540,11 +672,4 @@ function fmtUptime(seconds) {
 function fmtTime(date) { return date.toTimeString().slice(0, 8); }
 function escHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/* ─── MODAL ADD-DEVICE (QR URL auto-fill when already on dash) ─ */
-function showAddDeviceModal() {
-  // Already on dashboard, just show the pair screen with pre-filled ID
-  screenDash.classList.add('hidden');
-  screenPair.classList.remove('hidden');
 }

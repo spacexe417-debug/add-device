@@ -3,176 +3,263 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OmniHome — ESP32 Controller</title>
+  <title>Ellectra — Smart Home Controller</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBR3F9w-C94cAVMBScuu_3UQBMPoOWn6Vk",
+      authDomain: "device-add-4af1f.firebaseapp.com",
+      projectId: "device-add-4af1f",
+      storageBucket: "device-add-4af1f.firebasestorage.app",
+      messagingSenderId: "868461807973",
+      appId: "1:868461807973:web:6f6a81f51d27c96137b98c"
+    };
+
+    const app  = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+
+    // Expose to global so app.js can access
+    window._firebase = { auth, db, GoogleAuthProvider, signInWithPopup, signOut,
+      onAuthStateChanged, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc };
+  </script>
 </head>
 <body>
 
-  <!-- ═══════════════════════════════════════════════ HEADER -->
-  <header class="site-header">
-    <div class="header-inner">
-      <div class="logo">
-        <span class="logo-mark">⬡</span>
-        <span class="logo-text">OmniHome</span>
+  <!-- ═══════════════════════════ BACKGROUND VIDEO -->
+  <div class="bg-video-wrap">
+    <video id="bgVideo" autoplay muted loop playsinline>
+      <source src="https://raw.githubusercontent.com/ellectra2025-arch/ellectra-automation/main/15429436_1920_1080_30fps.mp4" type="video/mp4" />
+    </video>
+    <div class="bg-overlay"></div>
+  </div>
+
+  <!-- ═══════════════════════════ AUTH SCREEN -->
+  <section id="screenAuth" class="auth-screen">
+    <div class="auth-card">
+      <img src="https://raw.githubusercontent.com/pprojectcentreee/web-host-/main/Ellectra_w01wap.png"
+           alt="Ellectra" class="auth-logo" onerror="this.style.display='none';document.getElementById('authLogoFallback').style.display='flex'"/>
+      <div id="authLogoFallback" class="logo-fallback" style="display:none">
+        <span class="logo-mark">⬡</span><span class="logo-text">Ellectra</span>
       </div>
-      <div class="header-status" id="brokerStatus">
-        <span class="status-dot" id="brokerDot"></span>
-        <span id="brokerLabel">Disconnected</span>
-      </div>
+      <p class="auth-tagline">Smart Home Automation</p>
+      <p class="auth-sub">Sign in to manage and control all your devices from anywhere.</p>
+      <button class="btn btn-google" id="googleSignInBtn">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+          <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        Continue with Google
+      </button>
+      <p class="auth-note">Your devices are private and tied to your account.</p>
     </div>
-  </header>
+  </section>
 
-  <!-- ═══════════════════════════════════════════════ MAIN -->
-  <main>
+  <!-- ═══════════════════════════ MAIN APP -->
+  <div id="appShell" class="hidden">
 
-    <!-- ── PAIRING SCREEN ── -->
-    <section class="screen" id="screenPair">
-      <div class="screen-center">
-        <div class="pair-card">
-          <div class="pair-icon">📡</div>
-          <h1 class="pair-title">Add a Device</h1>
-          <p class="pair-sub">Scan the QR code printed on your ESP32 module, or paste the device ID below.</p>
-
-          <div class="input-group">
-            <label for="deviceInput">Device ID</label>
-            <input
-              type="text"
-              id="deviceInput"
-              placeholder="e.g. OM-7F2A9D4E8C1B6M3K"
-              spellcheck="false"
-              autocomplete="off"
-            />
+    <!-- ── HEADER ── -->
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="logo">
+          <img src="https://raw.githubusercontent.com/pprojectcentreee/web-host-/main/Ellectra_w01wap.png"
+               alt="Ellectra" class="header-logo-img"
+               onerror="this.style.display='none';document.getElementById('headerLogoFallback').style.display='flex'"/>
+          <div id="headerLogoFallback" style="display:none;align-items:center;gap:0.4rem">
+            <span class="logo-mark">⬡</span>
+            <span class="logo-text">Ellectra</span>
           </div>
-
-          <div class="input-group">
-            <label for="secretInput">Device Secret</label>
-            <input
-              type="password"
-              id="secretInput"
-              placeholder="e.g. 8e4f2c91a7d5b8e3d7a9f4b"
-              spellcheck="false"
-              autocomplete="off"
-            />
+        </div>
+        <div class="header-center">
+          <div class="header-status" id="brokerStatus">
+            <span class="status-dot" id="brokerDot"></span>
+            <span id="brokerLabel">Disconnected</span>
           </div>
-
-          <button class="btn btn-primary btn-full" id="pairBtn">Connect Device</button>
-
-          <div class="divider"><span>or open via QR link</span></div>
-          <p class="hint-text">The URL from your QR code will auto-fill the Device ID. You only need to enter your secret.</p>
+        </div>
+        <div class="header-right">
+          <div class="user-badge" id="userBadge">
+            <img id="userAvatar" src="" alt="" class="user-avatar" />
+            <span id="userName" class="user-name"></span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="signOutBtn">Sign Out</button>
         </div>
       </div>
-    </section>
+    </header>
 
-    <!-- ── DASHBOARD SCREEN ── -->
-    <section class="screen hidden" id="screenDash">
+    <!-- ── MAIN ── -->
+    <main>
 
-      <!-- Device Tab Bar -->
-      <div class="device-tab-bar" id="deviceTabBar">
-        <!-- device tabs injected here by JS -->
-        <button class="btn btn-add-device" id="addDeviceBtn">
-          <span class="add-icon">+</span>
-          <span>Add Device</span>
-        </button>
-      </div>
-
-      <!-- Device Header Bar -->
-      <div class="dash-topbar">
-        <div class="device-meta">
-          <span class="device-label">DEVICE</span>
-          <span class="device-id" id="dashDeviceId">—</span>
-        </div>
-        <div class="device-conn">
-          <span class="status-dot" id="deviceDot"></span>
-          <span id="deviceStatus">Offline</span>
-        </div>
-        <button class="btn btn-ghost btn-sm" id="disconnectBtn">✕ Remove</button>
-      </div>
-
-      <!-- Main Grid -->
-      <div class="dash-grid">
-
-        <!-- LED Control Card -->
-        <div class="card card-led">
-          <div class="card-header">
-            <span class="card-eyebrow">GPIO 2</span>
-            <h2 class="card-title">LED Control</h2>
-          </div>
-          <div class="led-visual" id="ledVisual">
-            <div class="led-bulb" id="ledBulb">
-              <div class="led-core"></div>
-              <div class="led-glow"></div>
+      <!-- PAIR SCREEN -->
+      <section class="screen" id="screenPair">
+        <div class="screen-center">
+          <div class="pair-card">
+            <div class="pair-icon">📡</div>
+            <h1 class="pair-title">Add a Device</h1>
+            <p class="pair-sub">Scan the QR code on your ESP32 module, or paste the device ID below.</p>
+            <div class="input-group">
+              <label for="deviceInput">Device ID</label>
+              <input type="text" id="deviceInput" placeholder="e.g. OM-7F2A9D4E8C1B6M3K" spellcheck="false" autocomplete="off" />
             </div>
-            <span class="led-state-label" id="ledStateLabel">OFF</span>
-          </div>
-          <div class="led-controls">
-            <button class="btn btn-on" id="btnOn">Turn ON</button>
-            <button class="btn btn-off" id="btnOff">Turn OFF</button>
+            <div class="input-group">
+              <label for="secretInput">Device Secret</label>
+              <input type="password" id="secretInput" placeholder="e.g. 8e4f2c91a7d5b8e3d7a9f4b" spellcheck="false" autocomplete="off" />
+            </div>
+            <div class="input-group">
+              <label for="deviceNickname">Nickname (optional)</label>
+              <input type="text" id="deviceNickname" placeholder="e.g. Living Room, Bedroom…" spellcheck="false" />
+            </div>
+            <button class="btn btn-primary btn-full" id="pairBtn">Connect Device</button>
+            <div class="divider"><span>or scan QR code</span></div>
+            <p class="hint-text">The URL from your QR code auto-fills the Device ID.</p>
           </div>
         </div>
+      </section>
 
-        <!-- Status Card -->
-        <div class="card card-status">
-          <div class="card-header">
-            <span class="card-eyebrow">Live Data</span>
-            <h2 class="card-title">Device Status</h2>
-          </div>
-          <div class="stat-list">
-            <div class="stat-row">
-              <span class="stat-key">Online</span>
-              <span class="stat-val" id="statOnline">—</span>
+      <!-- DASHBOARD SCREEN -->
+      <section class="screen hidden" id="screenDash">
+
+        <!-- Device Grid Panel (left sidebar) -->
+        <div class="dash-layout">
+
+          <!-- Device List Sidebar -->
+          <aside class="device-sidebar">
+            <div class="sidebar-head">
+              <span class="sidebar-title">My Devices</span>
+              <button class="btn btn-add-device" id="addDeviceBtn" title="Add device">
+                <span>+</span> Add
+              </button>
             </div>
-            <div class="stat-row">
-              <span class="stat-key">LED State</span>
-              <span class="stat-val" id="statLed">—</span>
+            <div class="device-list" id="deviceList">
+              <!-- device cards injected -->
             </div>
-            <div class="stat-row">
-              <span class="stat-key">Uptime</span>
-              <span class="stat-val" id="statUptime">—</span>
+          </aside>
+
+          <!-- Main Control Area -->
+          <div class="dash-main">
+
+            <!-- No device selected state -->
+            <div id="noDeviceSelected" class="no-device-msg">
+              <span class="no-device-icon">🔌</span>
+              <p>Select a device from the list to control it,<br/>or add a new device.</p>
             </div>
-            <div class="stat-row">
-              <span class="stat-key">Last Seen</span>
-              <span class="stat-val" id="statLastSeen">—</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-key">Heartbeat</span>
-              <span class="stat-val" id="statHeartbeat">—</span>
-            </div>
-          </div>
-        </div>
 
-        <!-- QR Code Card -->
-        <div class="card card-qr">
-          <div class="card-header">
-            <span class="card-eyebrow">Share / Pair</span>
-            <h2 class="card-title">QR Code</h2>
-          </div>
-          <div class="qr-wrap" id="qrCode"></div>
-          <p class="qr-url" id="qrUrl"></p>
-          <button class="btn btn-ghost btn-sm" id="copyUrlBtn">Copy Link</button>
-        </div>
+            <!-- Active device controls -->
+            <div id="activeDevicePanel" class="hidden">
 
-        <!-- Log Card -->
-        <div class="card card-log">
-          <div class="card-header">
-            <span class="card-eyebrow">MQTT</span>
-            <h2 class="card-title">Activity Log</h2>
-            <button class="btn btn-ghost btn-xs log-clear-btn" id="clearLogBtn">Clear</button>
-          </div>
-          <div class="log-body" id="logBody">
-            <div class="log-empty">No messages yet…</div>
-          </div>
-        </div>
+              <!-- Device Header Bar -->
+              <div class="dash-topbar">
+                <div class="device-meta">
+                  <span class="device-label">DEVICE</span>
+                  <span class="device-id" id="dashDeviceId">—</span>
+                  <span class="device-nickname" id="dashDeviceNick"></span>
+                </div>
+                <div class="device-conn">
+                  <span class="status-dot" id="deviceDot"></span>
+                  <span id="deviceStatus">Offline</span>
+                </div>
+                <button class="btn btn-ghost btn-sm" id="disconnectBtn">✕ Remove</button>
+              </div>
 
-      </div><!-- /dash-grid -->
-    </section>
+              <!-- Control Grid -->
+              <div class="dash-grid">
 
-  </main>
+                <!-- LED Control Card -->
+                <div class="card card-led">
+                  <div class="card-header">
+                    <span class="card-eyebrow">GPIO 2</span>
+                    <h2 class="card-title">LED Control</h2>
+                  </div>
+                  <div class="led-visual" id="ledVisual">
+                    <div class="led-bulb" id="ledBulb">
+                      <div class="led-core"></div>
+                      <div class="led-glow"></div>
+                    </div>
+                    <span class="led-state-label" id="ledStateLabel">OFF</span>
+                  </div>
+                  <div class="led-controls">
+                    <button class="btn btn-on" id="btnOn">Turn ON</button>
+                    <button class="btn btn-off" id="btnOff">Turn OFF</button>
+                  </div>
+                </div>
 
-  <!-- ═══════════════════════════════════════════════ TOAST -->
+                <!-- Status Card -->
+                <div class="card card-status">
+                  <div class="card-header">
+                    <span class="card-eyebrow">Live Data</span>
+                    <h2 class="card-title">Device Status</h2>
+                  </div>
+                  <div class="stat-list">
+                    <div class="stat-row">
+                      <span class="stat-key">Online</span>
+                      <span class="stat-val" id="statOnline">—</span>
+                    </div>
+                    <div class="stat-row">
+                      <span class="stat-key">LED State</span>
+                      <span class="stat-val" id="statLed">—</span>
+                    </div>
+                    <div class="stat-row">
+                      <span class="stat-key">Uptime</span>
+                      <span class="stat-val" id="statUptime">—</span>
+                    </div>
+                    <div class="stat-row">
+                      <span class="stat-key">Last Seen</span>
+                      <span class="stat-val" id="statLastSeen">—</span>
+                    </div>
+                    <div class="stat-row">
+                      <span class="stat-key">Heartbeat</span>
+                      <span class="stat-val" id="statHeartbeat">—</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- QR Code Card -->
+                <div class="card card-qr">
+                  <div class="card-header">
+                    <span class="card-eyebrow">Share / Pair</span>
+                    <h2 class="card-title">QR Code</h2>
+                  </div>
+                  <div class="qr-wrap" id="qrCode"></div>
+                  <p class="qr-url" id="qrUrl"></p>
+                  <button class="btn btn-ghost btn-sm" id="copyUrlBtn">Copy Link</button>
+                </div>
+
+                <!-- Log Card -->
+                <div class="card card-log">
+                  <div class="card-header">
+                    <span class="card-eyebrow">MQTT</span>
+                    <h2 class="card-title">Activity Log</h2>
+                    <button class="btn btn-ghost btn-xs log-clear-btn" id="clearLogBtn">Clear</button>
+                  </div>
+                  <div class="log-body" id="logBody">
+                    <div class="log-empty">No messages yet…</div>
+                  </div>
+                </div>
+
+              </div><!-- /dash-grid -->
+            </div><!-- /activeDevicePanel -->
+
+          </div><!-- /dash-main -->
+        </div><!-- /dash-layout -->
+      </section>
+
+    </main>
+  </div><!-- /appShell -->
+
+  <!-- ═══════════════════════════ TOAST -->
   <div class="toast-stack" id="toastStack"></div>
 
   <script src="app.js"></script>

@@ -33,6 +33,8 @@ let currentUser    = null;
 let firestoreUnsub = null;   // Firestore snapshot unsubscribe
 let qrScanner      = null;
 let scannerBusy    = false;
+let tutorialActive = false;
+let tutorialIndex  = 0;
 
 /* ─── DOM REFS ──────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
@@ -41,6 +43,7 @@ const screenAuth        = $('screenAuth');
 const appShell          = $('appShell');
 const googleSignInBtn   = $('googleSignInBtn');
 const signOutBtn        = $('signOutBtn');
+const tutorialBtn       = $('tutorialBtn');
 const userAvatar        = $('userAvatar');
 const userName          = $('userName');
 const screenPair        = $('screenPair');
@@ -77,6 +80,79 @@ const copyUrlBtn        = $('copyUrlBtn');
 const logBody           = $('logBody');
 const clearLogBtn       = $('clearLogBtn');
 const toastStack        = $('toastStack');
+const tutorialLayer     = $('tutorialLayer');
+const tutorialBackdrop  = $('tutorialBackdrop');
+const tutorialSpotlight = $('tutorialSpotlight');
+const tutorialCard      = $('tutorialCard');
+const tutorialProgress  = $('tutorialProgress');
+const tutorialTitle     = $('tutorialTitle');
+const tutorialText      = $('tutorialText');
+const tutorialSkipBtn   = $('tutorialSkipBtn');
+const tutorialNextBtn   = $('tutorialNextBtn');
+
+const TUTORIAL_STORAGE_KEY = 'ellectra_tutorial_seen';
+const tutorialSteps = [
+  {
+    target: 'deviceNickname',
+    title: 'Name your device',
+    text: 'First, type an easy name like Living Room or Bedroom. This is optional, but it helps you find the device later.',
+    screen: 'pair',
+  },
+  {
+    target: 'pairBtn',
+    title: 'Scan Device QR',
+    text: 'Press this button next. Your camera opens, then you scan the QR code printed for the device. No Device ID or secret typing is needed.',
+    screen: 'pair',
+  },
+  {
+    target: 'addDeviceBtn',
+    title: 'Add another device',
+    text: 'After one device is added, use this Add button whenever you want to scan and link another device.',
+    screen: 'dash',
+  },
+  {
+    target: 'deviceList',
+    title: 'Choose a device',
+    text: 'Your linked devices appear here. Click a device card to open its dashboard and controls.',
+    screen: 'dash',
+  },
+  {
+    target: 'btnOn',
+    title: 'Turn ON',
+    text: 'Press Turn ON to send an MQTT command to switch the selected device LED on.',
+    screen: 'dash',
+  },
+  {
+    target: 'btnOff',
+    title: 'Turn OFF',
+    text: 'Press Turn OFF to send the LED off command to the selected device.',
+    screen: 'dash',
+  },
+  {
+    target: 'copyUrlBtn',
+    title: 'Copy QR payload',
+    text: 'This copies the selected device QR payload. Use it only when you need to recreate or share that device QR securely.',
+    screen: 'dash',
+  },
+  {
+    target: 'clearLogBtn',
+    title: 'Clear activity log',
+    text: 'This clears the visible MQTT activity messages for the selected device. It does not remove your device.',
+    screen: 'dash',
+  },
+  {
+    target: 'disconnectBtn',
+    title: 'Remove device',
+    text: 'Use Remove only when you want to unlink the selected device from this account.',
+    screen: 'dash',
+  },
+  {
+    target: 'signOutBtn',
+    title: 'Sign out',
+    text: 'When you finish, press Sign Out to close your session and disconnect active MQTT clients.',
+    screen: 'any',
+  },
+];
 
 /* ─── WAIT FOR FIREBASE ─────────────────────────────────── */
 function waitForFirebase() {
@@ -119,6 +195,12 @@ function waitForFirebase() {
   });
 
   // Other UI listeners
+  tutorialBtn.addEventListener('click', () => startTutorial(true));
+  tutorialSkipBtn.addEventListener('click', skipTutorial);
+  tutorialNextBtn.addEventListener('click', nextTutorialStep);
+  tutorialBackdrop.addEventListener('click', skipTutorial);
+  window.addEventListener('resize', positionTutorial);
+  window.addEventListener('scroll', positionTutorial, true);
   pairBtn.addEventListener('click', startQrScanner);
   closeScannerBtn.addEventListener('click', stopQrScanner);
   disconnectBtn.addEventListener('click', handleDisconnect);
@@ -158,6 +240,7 @@ async function showApp(user) {
   screenPair.classList.remove('hidden');
 
   await loadDevicesFromFirestore(user.uid);
+  maybeStartTutorial();
 }
 
 /* ─── FIRESTORE DEVICE PERSISTENCE ─────────────────────── */
@@ -383,6 +466,123 @@ async function pairScannedDevice({ deviceId, secret }) {
     const message = e && e.message ? e.message : 'Device pairing failed.';
     toast(message, 'error');
   }
+}
+
+/* ─── CUSTOMER TUTORIAL ─────────────────────────────────── */
+function maybeStartTutorial() {
+  if (!localStorage.getItem(TUTORIAL_STORAGE_KEY)) {
+    setTimeout(() => startTutorial(false), 500);
+  }
+}
+
+function startTutorial(force = false) {
+  if (!currentUser) return;
+  if (!force && localStorage.getItem(TUTORIAL_STORAGE_KEY)) return;
+
+  tutorialActive = true;
+  tutorialIndex = 0;
+  tutorialLayer.classList.remove('hidden');
+  tutorialLayer.setAttribute('aria-hidden', 'false');
+  showTutorialStep();
+}
+
+function skipTutorial() {
+  endTutorial();
+  localStorage.setItem(TUTORIAL_STORAGE_KEY, 'skipped');
+  toast('Tutorial skipped. Press Tutorial anytime to view it again.', 'info');
+}
+
+function nextTutorialStep() {
+  tutorialIndex += 1;
+  showTutorialStep();
+}
+
+function endTutorial() {
+  tutorialActive = false;
+  tutorialLayer.classList.add('hidden');
+  tutorialLayer.setAttribute('aria-hidden', 'true');
+}
+
+function showTutorialStep() {
+  const step = findNextAvailableTutorialStep(tutorialIndex);
+  if (!step) {
+    endTutorial();
+    localStorage.setItem(TUTORIAL_STORAGE_KEY, 'done');
+    toast('Tutorial complete. You are ready to add and control devices.', 'success');
+    return;
+  }
+
+  tutorialIndex = step.index;
+  ensureTutorialScreen(step);
+
+  const target = $(step.target);
+  tutorialProgress.textContent = `Step ${tutorialIndex + 1} of ${tutorialSteps.length}`;
+  tutorialTitle.textContent = step.title;
+  tutorialText.textContent = step.text;
+  tutorialNextBtn.textContent = tutorialIndex === tutorialSteps.length - 1 ? 'Done' : 'Next';
+
+  requestAnimationFrame(() => positionTutorial(target));
+}
+
+function findNextAvailableTutorialStep(startIndex) {
+  for (let i = startIndex; i < tutorialSteps.length; i += 1) {
+    const step = tutorialSteps[i];
+    const target = $(step.target);
+    if (!target) continue;
+    if (step.screen === 'dash' && devices.size === 0) continue;
+    return { ...step, index: i };
+  }
+  return null;
+}
+
+function ensureTutorialScreen(step) {
+  if (step.screen === 'pair') {
+    screenDash.classList.add('hidden');
+    screenPair.classList.remove('hidden');
+    return;
+  }
+
+  if (step.screen === 'dash' && devices.size > 0) {
+    screenPair.classList.add('hidden');
+    screenDash.classList.remove('hidden');
+    if (!activeDeviceId) setActiveDevice(devices.keys().next().value);
+  }
+}
+
+function positionTutorial(target = null) {
+  if (!tutorialActive) return;
+  const activeStep = tutorialSteps[tutorialIndex];
+  const el = target || (activeStep ? $(activeStep.target) : null);
+  if (!el) return;
+
+  const rect = el.getBoundingClientRect();
+  const pad = 8;
+  const spotlightTop = Math.max(8, rect.top - pad);
+  const spotlightLeft = Math.max(8, rect.left - pad);
+  const spotlightWidth = Math.min(window.innerWidth - 16, rect.width + pad * 2);
+  const spotlightHeight = Math.min(window.innerHeight - 16, rect.height + pad * 2);
+
+  tutorialSpotlight.style.top = `${spotlightTop}px`;
+  tutorialSpotlight.style.left = `${spotlightLeft}px`;
+  tutorialSpotlight.style.width = `${spotlightWidth}px`;
+  tutorialSpotlight.style.height = `${spotlightHeight}px`;
+
+  const cardWidth = Math.min(340, window.innerWidth - 32);
+  tutorialCard.style.width = `${cardWidth}px`;
+
+  const cardRect = tutorialCard.getBoundingClientRect();
+  const belowTop = rect.bottom + 18;
+  const aboveTop = rect.top - cardRect.height - 18;
+  const top = belowTop + cardRect.height < window.innerHeight - 12
+    ? belowTop
+    : Math.max(12, aboveTop);
+  const left = Math.min(
+    Math.max(16, rect.left + rect.width / 2 - cardWidth / 2),
+    window.innerWidth - cardWidth - 16
+  );
+
+  tutorialCard.style.top = `${top}px`;
+  tutorialCard.style.left = `${left}px`;
 }
 
 /* ─── DISCONNECT / REMOVE ───────────────────────────────── */

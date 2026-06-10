@@ -97,6 +97,7 @@
             <img id="userAvatar" src="" alt="" class="user-avatar" />
             <span id="userName" class="user-name"></span>
           </div>
+          <button class="btn btn-ghost btn-sm" id="tutorialBtn">Tutorial</button>
           <button class="btn btn-ghost btn-sm" id="signOutBtn">Sign Out</button>
         </div>
       </div>
@@ -281,6 +282,20 @@
   </div>
 
   <!-- ═══════════════════════════ TOAST -->
+  <div class="tutorial-layer hidden" id="tutorialLayer" aria-hidden="true">
+    <div class="tutorial-backdrop" id="tutorialBackdrop"></div>
+    <div class="tutorial-spotlight" id="tutorialSpotlight"></div>
+    <div class="tutorial-card" id="tutorialCard" role="dialog" aria-live="polite" aria-labelledby="tutorialTitle">
+      <div class="tutorial-progress" id="tutorialProgress"></div>
+      <h2 id="tutorialTitle">Welcome</h2>
+      <p id="tutorialText"></p>
+      <div class="tutorial-actions">
+        <button class="btn btn-ghost btn-sm" id="tutorialSkipBtn">Skip</button>
+        <button class="btn btn-primary btn-sm" id="tutorialNextBtn">Next</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast-stack" id="toastStack"></div>
 
   <script src="app.js"></script>

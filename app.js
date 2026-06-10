@@ -43,10 +43,19 @@ const userAvatar        = $('userAvatar');
 const userName          = $('userName');
 const screenPair        = $('screenPair');
 const screenDash        = $('screenDash');
+// Modal (overlay) — used when adding devices while dashboard is already showing
+const pairModalBackdrop = $('pairModalBackdrop');
+const pairCancelBtn     = $('pairCancelBtn');
+// Modal inputs
 const deviceInput       = $('deviceInput');
 const secretInput       = $('secretInput');
 const deviceNickname    = $('deviceNickname');
 const pairBtn           = $('pairBtn');
+// First-run inputs (screenPair, shown only before any device is paired)
+const deviceInputFirst  = $('deviceInputFirst');
+const secretInputFirst  = $('secretInputFirst');
+const deviceNicknameFirst = $('deviceNicknameFirst');
+const pairBtnFirst      = $('pairBtnFirst');
 const brokerDot         = $('brokerDot');
 const brokerLabel       = $('brokerLabel');
 const deviceList        = $('deviceList');
@@ -115,9 +124,15 @@ function waitForFirebase() {
   });
 
   // Other UI listeners
-  pairBtn.addEventListener('click', handlePair);
+  pairBtn.addEventListener('click', handlePair);           // modal pair
+  pairBtnFirst.addEventListener('click', handlePairFirst); // first-run pair
   disconnectBtn.addEventListener('click', handleDisconnect);
-  addDeviceBtn.addEventListener('click', showPairScreen);
+  addDeviceBtn.addEventListener('click', openPairModal);
+  pairCancelBtn.addEventListener('click', closePairModal);
+  // Close modal when clicking the dark backdrop (outside the card)
+  pairModalBackdrop.addEventListener('click', e => {
+    if (e.target === pairModalBackdrop) closePairModal();
+  });
   btnOn.addEventListener('click', () => sendLedCommand(activeDeviceId, 1));
   btnOff.addEventListener('click', () => sendLedCommand(activeDeviceId, 0));
   copyUrlBtn.addEventListener('click', handleCopyUrl);
@@ -125,16 +140,26 @@ function waitForFirebase() {
     const dev = devices.get(activeDeviceId);
     if (dev) { dev.logEntries = []; renderLog(); }
   });
+  // Enter-key navigation — modal form
   deviceInput.addEventListener('keydown', e => { if (e.key === 'Enter') secretInput.focus(); });
   secretInput.addEventListener('keydown', e => { if (e.key === 'Enter') deviceNickname.focus(); });
   deviceNickname.addEventListener('keydown', e => { if (e.key === 'Enter') handlePair(); });
+  // Enter-key navigation — first-run form
+  deviceInputFirst.addEventListener('keydown', e => { if (e.key === 'Enter') secretInputFirst.focus(); });
+  secretInputFirst.addEventListener('keydown', e => { if (e.key === 'Enter') deviceNicknameFirst.focus(); });
+  deviceNicknameFirst.addEventListener('keydown', e => { if (e.key === 'Enter') handlePairFirst(); });
+  // Escape closes the modal
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePairModal(); });
 
-  // URL param pre-fill
+  // URL param pre-fill (applies to whichever input is visible)
   const params = new URLSearchParams(window.location.search);
   const urlDevice = params.get('device');
   if (urlDevice) {
-    deviceInput.value = urlDevice.trim().toUpperCase();
+    const val = urlDevice.trim().toUpperCase();
+    deviceInput.value      = val;
+    deviceInputFirst.value = val;
     deviceInput.setAttribute('readonly', 'true');
+    deviceInputFirst.setAttribute('readonly', 'true');
   }
 })();
 
@@ -150,7 +175,13 @@ function showAuthScreen() {
 }
 
 async function showApp(user) {
-  screenAuth.classList.add('hidden');
+  // Animated vanish: fade + slide up, then snap hidden
+  screenAuth.classList.add('vanishing');
+  setTimeout(() => {
+    screenAuth.classList.add('hidden');
+    screenAuth.classList.remove('vanishing');
+  }, 460); // matches CSS transition duration (0.45s)
+
   appShell.classList.remove('hidden');
 
   // Update user badge
@@ -163,7 +194,7 @@ async function showApp(user) {
 
   // Show correct screen
   if (devices.size === 0) {
-    showPairScreen();
+    showFirstRunPairScreen();
   } else {
     screenPair.classList.add('hidden');
     screenDash.classList.remove('hidden');
@@ -247,34 +278,80 @@ function makeDeviceState(id, secret, nickname) {
   };
 }
 
-/* ─── PAIR SCREEN ───────────────────────────────────────── */
-function showPairScreen() {
-  deviceInput.removeAttribute('readonly');
-  deviceInput.value = '';
-  secretInput.value = '';
-  deviceNickname.value = '';
+/* ─── PAIR SCREEN / MODAL ───────────────────────────────── */
+
+// First-run only: shown when the user has no devices at all
+function showFirstRunPairScreen() {
+  deviceInputFirst.removeAttribute('readonly');
+  deviceInputFirst.value      = '';
+  secretInputFirst.value      = '';
+  deviceNicknameFirst.value   = '';
   screenDash.classList.add('hidden');
   screenPair.classList.remove('hidden');
 }
 
-/* ─── PAIRING ───────────────────────────────────────────── */
+// Opens the modal overlay — dashboard stays fully visible behind it
+function openPairModal() {
+  deviceInput.removeAttribute('readonly');
+  deviceInput.value      = '';
+  secretInput.value      = '';
+  deviceNickname.value   = '';
+  pairModalBackdrop.classList.add('open');
+  // Small delay so the opacity transition runs after display kicks in
+  requestAnimationFrame(() => deviceInput.focus());
+}
+
+function closePairModal() {
+  pairModalBackdrop.classList.remove('open');
+}
+
+/* ─── PAIRING (modal — adding extra devices) ────────────── */
 async function handlePair() {
   const id   = deviceInput.value.trim().toUpperCase();
   const sec  = secretInput.value.trim();
   const nick = deviceNickname.value.trim();
 
-  if (!id)          { toast('Enter a Device ID', 'error');      deviceInput.focus();  return; }
-  if (id.length < 8){ toast('Device ID too short', 'error');    deviceInput.focus();  return; }
-  if (!sec)         { toast('Enter the Device Secret', 'error');secretInput.focus();  return; }
+  if (!id)          { toast('Enter a Device ID', 'error');       deviceInput.focus();  return; }
+  if (id.length < 8){ toast('Device ID too short', 'error');     deviceInput.focus();  return; }
+  if (!sec)         { toast('Enter the Device Secret', 'error'); secretInput.focus();  return; }
   if (devices.has(id)) { toast('Device already added', 'error'); return; }
 
   const dev = makeDeviceState(id, sec, nick);
   devices.set(id, dev);
 
-  // Save to Firestore
   await saveDeviceToFirestore(dev);
 
-  // Switch to dashboard
+  // Close the modal — dashboard is already showing
+  closePairModal();
+
+  // Make sure dashboard is visible (it already should be)
+  screenPair.classList.add('hidden');
+  screenDash.classList.remove('hidden');
+
+  renderDeviceList();
+  setActiveDevice(id);
+  connectMQTT(id);
+
+  toast(`Device ${nick || id} added`, 'success');
+}
+
+/* ─── PAIRING (first-run screen — very first device) ────── */
+async function handlePairFirst() {
+  const id   = deviceInputFirst.value.trim().toUpperCase();
+  const sec  = secretInputFirst.value.trim();
+  const nick = deviceNicknameFirst.value.trim();
+
+  if (!id)          { toast('Enter a Device ID', 'error');       deviceInputFirst.focus();  return; }
+  if (id.length < 8){ toast('Device ID too short', 'error');     deviceInputFirst.focus();  return; }
+  if (!sec)         { toast('Enter the Device Secret', 'error'); secretInputFirst.focus();  return; }
+  if (devices.has(id)) { toast('Device already added', 'error'); return; }
+
+  const dev = makeDeviceState(id, sec, nick);
+  devices.set(id, dev);
+
+  await saveDeviceToFirestore(dev);
+
+  // Transition from first-run screen to dashboard
   screenPair.classList.add('hidden');
   screenDash.classList.remove('hidden');
 
@@ -301,8 +378,7 @@ async function removeDevice(id) {
   if (devices.size === 0) {
     activeDeviceId = null;
     screenDash.classList.add('hidden');
-    screenPair.classList.remove('hidden');
-    deviceInput.removeAttribute('readonly');
+    showFirstRunPairScreen();
     renderDeviceList();
   } else {
     if (id === activeDeviceId) {

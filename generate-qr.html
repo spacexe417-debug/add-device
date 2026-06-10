@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ellectra Device QR Generator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #08090c;
+      --bg-card: #131620;
+      --bg-input: #191d2a;
+      --border: #1f253a;
+      --border-bright: #2e3655;
+      --cyan: #00e5ff;
+      --cyan-dim: rgba(0, 229, 255, 0.10);
+      --text-1: #e8ecf4;
+      --text-2: #8b93a8;
+      --text-3: #44506a;
+      --red: #ff3d71;
+      --font-ui: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "IBM Plex Mono", "Courier New", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background:
+        linear-gradient(160deg, rgba(8,9,12,0.78), rgba(8,9,12,0.96)),
+        #08090c;
+      color: var(--text-1);
+      font-family: var(--font-ui);
+      line-height: 1.6;
+    }
+    .generator {
+      width: min(920px, 100%);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    .panel {
+      background: rgba(19, 22, 32, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 2px 28px rgba(0,0,0,0.55);
+      padding: 1.5rem;
+    }
+    .eyebrow {
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 0.35rem;
+    }
+    h1 { font-size: 1.55rem; margin-bottom: 0.6rem; }
+    .sub { color: var(--text-2); font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+    label {
+      color: var(--text-2);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    input {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-1);
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      outline: none;
+      padding: 0.75rem 0.9rem;
+    }
+    input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px var(--cyan-dim);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+    }
+    button {
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      padding: 0.8rem 1.05rem;
+    }
+    .primary { background: var(--cyan); color: #000; }
+    .secondary {
+      background: transparent;
+      border: 1px solid var(--border-bright);
+      color: var(--text-2);
+    }
+    .secondary:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+    .qr-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+    #qrCode {
+      min-width: 256px;
+      min-height: 256px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      border-radius: 6px;
+      padding: 16px;
+    }
+    .placeholder {
+      color: var(--text-3);
+      text-align: center;
+      font-size: 0.84rem;
+      padding: 2rem;
+    }
+    .payload {
+      width: 100%;
+      color: var(--text-3);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      line-height: 1.5;
+      word-break: break-all;
+      text-align: center;
+    }
+    .error {
+      color: var(--red);
+      font-size: 0.82rem;
+      min-height: 1.2rem;
+      margin-top: 0.75rem;
+    }
+    @media (max-width: 760px) {
+      body { padding: 1rem; align-items: flex-start; }
+      .generator { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body { background: #fff; color: #000; }
+      .form-panel, .actions, .sub, .eyebrow { display: none; }
+      .generator { display: block; width: auto; }
+      .panel { border: 0; box-shadow: none; }
+      .payload { color: #000; }
+    }
+  </style>
+</head>
+<body>
+  <main class="generator">
+    <section class="panel form-panel">
+      <p class="eyebrow">Ellectra Setup</p>
+      <h1>Device QR Generator</h1>
+      <p class="sub">Generate a device QR code for the pairing flow. The QR stores only the JSON payload below.</p>
+
+      <div class="input-group">
+        <label for="deviceId">Device ID</label>
+        <input id="deviceId" type="text" placeholder="OM-XXXXXXXXXXXX" autocomplete="off" spellcheck="false" />
+      </div>
+
+      <div class="input-group">
+        <label for="deviceSecret">Device Secret</label>
+        <input id="deviceSecret" type="text" placeholder="XXXXXXXXXXXXXXXX" autocomplete="off" spellcheck="false" />
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="generateBtn">Generate QR</button>
+        <button class="secondary" id="downloadBtn" disabled>Download QR PNG</button>
+        <button class="secondary" id="printBtn" disabled>Print QR</button>
+      </div>
+      <p class="error" id="errorText"></p>
+    </section>
+
+    <section class="panel qr-panel">
+      <div id="qrCode"><p class="placeholder">Generated QR appears here.</p></div>
+      <p class="payload" id="payloadText"></p>
+    </section>
+  </main>
+
+  <script>
+    'use strict';
+
+    const deviceId = document.getElementById('deviceId');
+    const deviceSecret = document.getElementById('deviceSecret');
+    const generateBtn = document.getElementById('generateBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const printBtn = document.getElementById('printBtn');
+    const qrCode = document.getElementById('qrCode');
+    const payloadText = document.getElementById('payloadText');
+    const errorText = document.getElementById('errorText');
+
+    let latestPayload = '';
+
+    generateBtn.addEventListener('click', generateQr);
+    downloadBtn.addEventListener('click', downloadQr);
+    printBtn.addEventListener('click', () => window.print());
+    deviceSecret.addEventListener('keydown', event => {
+      if (event.key === 'Enter') generateQr();
+    });
+
+    function generateQr() {
+      const id = deviceId.value.trim().toUpperCase();
+      const secret = deviceSecret.value.trim();
+
+      errorText.textContent = '';
+      if (!id) {
+        errorText.textContent = 'Enter a Device ID.';
+        deviceId.focus();
+        return;
+      }
+      if (!secret) {
+        errorText.textContent = 'Enter a Device Secret.';
+        deviceSecret.focus();
+        return;
+      }
+
+      latestPayload = JSON.stringify({ deviceId: id, secret });
+      qrCode.innerHTML = '';
+      new QRCode(qrCode, {
+        text: latestPayload,
+        width: 256,
+        height: 256,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+
+      payloadText.textContent = latestPayload;
+      downloadBtn.disabled = false;
+      printBtn.disabled = false;
+    }
+
+    function downloadQr() {
+      const canvas = qrCode.querySelector('canvas');
+      const img = qrCode.querySelector('img');
+      let dataUrl = '';
+
+      if (canvas) dataUrl = canvas.toDataURL('image/png');
+      else if (img) dataUrl = img.src;
+      if (!dataUrl) return;
+
+      const id = deviceId.value.trim().toUpperCase() || 'device';
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${id}-qr.png`;
+      link.click();
+    }
+  </script>
+</body>
+</html>

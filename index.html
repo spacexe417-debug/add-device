@@ -103,26 +103,51 @@
     <!-- ── MAIN ── -->
     <main>
 
-      <!-- PAIR SCREEN -->
+      <!-- PAIR MODAL (shown as overlay on top of dashboard when adding more devices) -->
+      <div id="pairModalBackdrop" class="pair-modal-backdrop">
+        <div class="pair-card">
+          <div class="pair-icon">📡</div>
+          <h1 class="pair-title">Add a Device</h1>
+          <p class="pair-sub">Scan the QR code on your ESP32 module, or paste the device ID below.</p>
+          <div class="input-group">
+            <label for="deviceInput">Device ID</label>
+            <input type="text" id="deviceInput" placeholder="e.g. OM-7F2A9D4E8C1B6M3K" spellcheck="false" autocomplete="off" />
+          </div>
+          <div class="input-group">
+            <label for="secretInput">Device Secret</label>
+            <input type="password" id="secretInput" placeholder="e.g. 8e4f2c91a7d5b8e3d7a9f4b" spellcheck="false" autocomplete="off" />
+          </div>
+          <div class="input-group">
+            <label for="deviceNickname">Nickname (optional)</label>
+            <input type="text" id="deviceNickname" placeholder="e.g. Living Room, Bedroom…" spellcheck="false" />
+          </div>
+          <button class="btn btn-primary btn-full" id="pairBtn">Connect Device</button>
+          <button class="btn btn-pair-cancel" id="pairCancelBtn">Cancel</button>
+          <div class="divider"><span>or scan QR code</span></div>
+          <p class="hint-text">The URL from your QR code auto-fills the Device ID.</p>
+        </div>
+      </div>
+
+      <!-- PAIR SCREEN (first-run only — no devices yet) -->
       <section class="screen" id="screenPair">
         <div class="screen-center">
           <div class="pair-card">
             <div class="pair-icon">📡</div>
-            <h1 class="pair-title">Add a Device</h1>
+            <h1 class="pair-title">Add Your First Device</h1>
             <p class="pair-sub">Scan the QR code on your ESP32 module, or paste the device ID below.</p>
             <div class="input-group">
-              <label for="deviceInput">Device ID</label>
-              <input type="text" id="deviceInput" placeholder="e.g. OM-7F2A9D4E8C1B6M3K" spellcheck="false" autocomplete="off" />
+              <label for="deviceInputFirst">Device ID</label>
+              <input type="text" id="deviceInputFirst" placeholder="e.g. OM-7F2A9D4E8C1B6M3K" spellcheck="false" autocomplete="off" />
             </div>
             <div class="input-group">
-              <label for="secretInput">Device Secret</label>
-              <input type="password" id="secretInput" placeholder="e.g. 8e4f2c91a7d5b8e3d7a9f4b" spellcheck="false" autocomplete="off" />
+              <label for="secretInputFirst">Device Secret</label>
+              <input type="password" id="secretInputFirst" placeholder="e.g. 8e4f2c91a7d5b8e3d7a9f4b" spellcheck="false" autocomplete="off" />
             </div>
             <div class="input-group">
-              <label for="deviceNickname">Nickname (optional)</label>
-              <input type="text" id="deviceNickname" placeholder="e.g. Living Room, Bedroom…" spellcheck="false" />
+              <label for="deviceNicknameFirst">Nickname (optional)</label>
+              <input type="text" id="deviceNicknameFirst" placeholder="e.g. Living Room, Bedroom…" spellcheck="false" />
             </div>
-            <button class="btn btn-primary btn-full" id="pairBtn">Connect Device</button>
+            <button class="btn btn-primary btn-full" id="pairBtnFirst">Connect Device</button>
             <div class="divider"><span>or scan QR code</span></div>
             <p class="hint-text">The URL from your QR code auto-fills the Device ID.</p>
           </div>

@@ -53,6 +53,7 @@ body {
 }
 input, button { font-family: inherit; font-size: inherit; }
 button { cursor: pointer; border: none; background: none; }
+.hidden { display: none !important; }
 
 /* ── BACKGROUND VIDEO ── */
 .bg-video-wrap {
@@ -93,13 +94,6 @@ button { cursor: pointer; border: none; background: none; }
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  transition: opacity 0.45s ease, transform 0.45s ease;
-}
-/* Triggered by JS just before hiding — smooth vanish upward */
-.auth-screen.vanishing {
-  opacity: 0;
-  transform: translateY(-18px);
-  pointer-events: none;
 }
 .auth-card {
   background: rgba(19, 22, 32, 0.85);
@@ -424,51 +418,56 @@ button { cursor: pointer; border: none; background: none; }
 }
 .hint-text { font-size: 0.78rem; color: var(--text-3); text-align: center; line-height: 1.6; }
 
-/* ── PAIR MODAL OVERLAY ── */
-/* Sits on top of the dashboard — dashboard stays fully visible behind it */
-.pair-modal-backdrop {
+/* ── QR SCANNER ── */
+.scanner-modal {
   position: fixed;
   inset: 0;
-  z-index: 200;
-  background: rgba(8, 9, 12, 0.72);
-  backdrop-filter: blur(6px);
+  z-index: 500;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.22s ease;
+  background: rgba(8, 9, 12, 0.76);
+  backdrop-filter: blur(14px);
 }
-.pair-modal-backdrop.open {
-  opacity: 1;
-  pointer-events: all;
-}
-.pair-modal-backdrop .pair-card {
-  transform: translateY(16px);
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.pair-modal-backdrop.open .pair-card {
-  transform: translateY(0);
-}
-/* Cancel button inside the modal */
-.btn-pair-cancel {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 0.65rem 1rem;
-  background: transparent;
+.scanner-card {
+  width: min(460px, 100%);
+  background: rgba(19, 22, 32, 0.96);
   border: 1px solid var(--border-bright);
-  border-radius: var(--radius-sm);
-  color: var(--text-3);
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 0.5rem;
-  transition: all var(--transition);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem;
 }
-.btn-pair-cancel:hover { border-color: var(--red); color: var(--red); }
+.scanner-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.scanner-title {
+  font-size: 1.05rem;
+  color: var(--text-1);
+  line-height: 1.2;
+}
+.qr-reader {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #000;
+  min-height: 280px;
+}
+.qr-reader video {
+  width: 100% !important;
+  border-radius: var(--radius-sm);
+}
+.scanner-note {
+  margin-top: 0.9rem;
+  color: var(--text-2);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  text-align: center;
+}
 
 /* ── DASH LAYOUT (sidebar + main) ── */
 .dash-layout {

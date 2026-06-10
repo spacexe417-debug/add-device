@@ -31,6 +31,8 @@ const devices = new Map();
 let activeDeviceId = null;
 let currentUser    = null;
 let firestoreUnsub = null;   // Firestore snapshot unsubscribe
+let qrScanner      = null;
+let scannerBusy    = false;
 
 /* ─── DOM REFS ──────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
@@ -43,19 +45,12 @@ const userAvatar        = $('userAvatar');
 const userName          = $('userName');
 const screenPair        = $('screenPair');
 const screenDash        = $('screenDash');
-// Modal (overlay) — used when adding devices while dashboard is already showing
-const pairModalBackdrop = $('pairModalBackdrop');
-const pairCancelBtn     = $('pairCancelBtn');
-// Modal inputs
-const deviceInput       = $('deviceInput');
-const secretInput       = $('secretInput');
 const deviceNickname    = $('deviceNickname');
 const pairBtn           = $('pairBtn');
-// First-run inputs (screenPair, shown only before any device is paired)
-const deviceInputFirst  = $('deviceInputFirst');
-const secretInputFirst  = $('secretInputFirst');
-const deviceNicknameFirst = $('deviceNicknameFirst');
-const pairBtnFirst      = $('pairBtnFirst');
+const scannerModal      = $('scannerModal');
+const closeScannerBtn   = $('closeScannerBtn');
+const qrReader          = $('qrReader');
+const scannerNote       = $('scannerNote');
 const brokerDot         = $('brokerDot');
 const brokerLabel       = $('brokerLabel');
 const deviceList        = $('deviceList');
@@ -124,15 +119,10 @@ function waitForFirebase() {
   });
 
   // Other UI listeners
-  pairBtn.addEventListener('click', handlePair);           // modal pair
-  pairBtnFirst.addEventListener('click', handlePairFirst); // first-run pair
+  pairBtn.addEventListener('click', startQrScanner);
+  closeScannerBtn.addEventListener('click', stopQrScanner);
   disconnectBtn.addEventListener('click', handleDisconnect);
-  addDeviceBtn.addEventListener('click', openPairModal);
-  pairCancelBtn.addEventListener('click', closePairModal);
-  // Close modal when clicking the dark backdrop (outside the card)
-  pairModalBackdrop.addEventListener('click', e => {
-    if (e.target === pairModalBackdrop) closePairModal();
-  });
+  addDeviceBtn.addEventListener('click', showPairScreen);
   btnOn.addEventListener('click', () => sendLedCommand(activeDeviceId, 1));
   btnOff.addEventListener('click', () => sendLedCommand(activeDeviceId, 0));
   copyUrlBtn.addEventListener('click', handleCopyUrl);
@@ -140,33 +130,14 @@ function waitForFirebase() {
     const dev = devices.get(activeDeviceId);
     if (dev) { dev.logEntries = []; renderLog(); }
   });
-  // Enter-key navigation — modal form
-  deviceInput.addEventListener('keydown', e => { if (e.key === 'Enter') secretInput.focus(); });
-  secretInput.addEventListener('keydown', e => { if (e.key === 'Enter') deviceNickname.focus(); });
-  deviceNickname.addEventListener('keydown', e => { if (e.key === 'Enter') handlePair(); });
-  // Enter-key navigation — first-run form
-  deviceInputFirst.addEventListener('keydown', e => { if (e.key === 'Enter') secretInputFirst.focus(); });
-  secretInputFirst.addEventListener('keydown', e => { if (e.key === 'Enter') deviceNicknameFirst.focus(); });
-  deviceNicknameFirst.addEventListener('keydown', e => { if (e.key === 'Enter') handlePairFirst(); });
-  // Escape closes the modal
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePairModal(); });
-
-  // URL param pre-fill (applies to whichever input is visible)
-  const params = new URLSearchParams(window.location.search);
-  const urlDevice = params.get('device');
-  if (urlDevice) {
-    const val = urlDevice.trim().toUpperCase();
-    deviceInput.value      = val;
-    deviceInputFirst.value = val;
-    deviceInput.setAttribute('readonly', 'true');
-    deviceInputFirst.setAttribute('readonly', 'true');
-  }
+  deviceNickname.addEventListener('keydown', e => { if (e.key === 'Enter') startQrScanner(); });
 })();
 
 /* ─── AUTH SCREENS ──────────────────────────────────────── */
 function showAuthScreen() {
   screenAuth.classList.remove('hidden');
   appShell.classList.add('hidden');
+  stopQrScanner();
   // Disconnect everything if previously connected
   disconnectAllDevices();
   devices.clear();
@@ -175,33 +146,18 @@ function showAuthScreen() {
 }
 
 async function showApp(user) {
-  // Animated vanish: fade + slide up, then snap hidden
-  screenAuth.classList.add('vanishing');
-  setTimeout(() => {
-    screenAuth.classList.add('hidden');
-    screenAuth.classList.remove('vanishing');
-  }, 460); // matches CSS transition duration (0.45s)
-
+  screenAuth.classList.add('hidden');
   appShell.classList.remove('hidden');
 
-  // Update user badge
   userAvatar.src = user.photoURL || '';
   userAvatar.style.display = user.photoURL ? 'block' : 'none';
   userName.textContent = user.displayName || user.email || '';
 
-  // Load saved devices from Firestore
-  await loadDevicesFromFirestore(user.uid);
+  // Always show Add Device page after login
+  screenDash.classList.add('hidden');
+  screenPair.classList.remove('hidden');
 
-  // Show correct screen
-  if (devices.size === 0) {
-    showFirstRunPairScreen();
-  } else {
-    screenPair.classList.add('hidden');
-    screenDash.classList.remove('hidden');
-    // Auto-select first device
-    const firstId = devices.keys().next().value;
-    setActiveDevice(firstId);
-  }
+  await loadDevicesFromFirestore(user.uid);
 }
 
 /* ─── FIRESTORE DEVICE PERSISTENCE ─────────────────────── */
@@ -278,88 +234,155 @@ function makeDeviceState(id, secret, nickname) {
   };
 }
 
-/* ─── PAIR SCREEN / MODAL ───────────────────────────────── */
-
-// First-run only: shown when the user has no devices at all
-function showFirstRunPairScreen() {
-  deviceInputFirst.removeAttribute('readonly');
-  deviceInputFirst.value      = '';
-  secretInputFirst.value      = '';
-  deviceNicknameFirst.value   = '';
+/* ─── PAIR SCREEN ───────────────────────────────────────── */
+function showPairScreen() {
+  deviceNickname.value = '';
   screenDash.classList.add('hidden');
   screenPair.classList.remove('hidden');
 }
 
-// Opens the modal overlay — dashboard stays fully visible behind it
-function openPairModal() {
-  deviceInput.removeAttribute('readonly');
-  deviceInput.value      = '';
-  secretInput.value      = '';
-  deviceNickname.value   = '';
-  pairModalBackdrop.classList.add('open');
-  // Small delay so the opacity transition runs after display kicks in
-  requestAnimationFrame(() => deviceInput.focus());
+/* ─── PAIRING ───────────────────────────────────────────── */
+async function startQrScanner() {
+  if (!currentUser) {
+    toast('Sign in before pairing a device', 'error');
+    return;
+  }
+  if (typeof Html5Qrcode === 'undefined') {
+    toast('QR scanner library failed to load', 'error');
+    return;
+  }
+
+  scannerBusy = false;
+  scannerModal.classList.remove('hidden');
+  scannerModal.setAttribute('aria-hidden', 'false');
+  scannerNote.textContent = 'Allow camera access, then point the camera at the device QR code.';
+
+  if (!qrScanner) qrScanner = new Html5Qrcode('qrReader');
+
+  try {
+    await qrScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: qrboxSize },
+      onQrDecoded,
+      () => {}
+    );
+  } catch (e) {
+    scannerNote.textContent = 'Camera could not be opened. Check browser camera permission and try again.';
+    toast('Camera could not be opened', 'error');
+  }
 }
 
-function closePairModal() {
-  pairModalBackdrop.classList.remove('open');
+async function stopQrScanner() {
+  scannerBusy = false;
+  if (qrScanner && qrScanner.isScanning) {
+    try {
+      await qrScanner.stop();
+      await qrScanner.clear();
+    } catch (e) {
+      console.warn('QR scanner stop error:', e);
+    }
+  }
+  scannerModal.classList.add('hidden');
+  scannerModal.setAttribute('aria-hidden', 'true');
 }
 
-/* ─── PAIRING (modal — adding extra devices) ────────────── */
-async function handlePair() {
-  const id   = deviceInput.value.trim().toUpperCase();
-  const sec  = secretInput.value.trim();
+function qrboxSize(viewfinderWidth, viewfinderHeight) {
+  const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72);
+  const size = Math.max(180, Math.min(edge, 280));
+  return { width: size, height: size };
+}
+
+async function onQrDecoded(decodedText) {
+  if (scannerBusy) return;
+  scannerBusy = true;
+  scannerNote.textContent = 'QR detected. Linking device...';
+
+  let payload;
+  try {
+    payload = parseDeviceQrPayload(decodedText);
+  } catch (e) {
+    scannerBusy = false;
+    scannerNote.textContent = e.message;
+    toast(e.message, 'error');
+    return;
+  }
+
+  await stopQrScanner();
+  await pairScannedDevice(payload);
+}
+
+function parseDeviceQrPayload(raw) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    throw new Error('Invalid QR code. Expected device JSON.');
+  }
+
+  const deviceId = String(data.deviceId || '').trim().toUpperCase();
+  const secret = String(data.secret || '').trim();
+
+  if (!deviceId) throw new Error('QR code missing deviceId.');
+  if (!secret) throw new Error('QR code missing secret.');
+  if (deviceId.length < 8) throw new Error('Device ID too short.');
+
+  return { deviceId, secret };
+}
+
+async function pairScannedDevice({ deviceId, secret }) {
+  if (!currentUser) return;
+  if (devices.has(deviceId)) {
+    toast('Device already added.', 'error');
+    return;
+  }
+
+  const fb = window._firebase;
   const nick = deviceNickname.value.trim();
+  const deviceRef = fb.doc(fb.db, 'devices', deviceId);
+  const userDeviceRef = fb.doc(fb.db, 'users', currentUser.uid, 'devices', deviceId);
 
-  if (!id)          { toast('Enter a Device ID', 'error');       deviceInput.focus();  return; }
-  if (id.length < 8){ toast('Device ID too short', 'error');     deviceInput.focus();  return; }
-  if (!sec)         { toast('Enter the Device Secret', 'error'); secretInput.focus();  return; }
-  if (devices.has(id)) { toast('Device already added', 'error'); return; }
+  try {
+    await fb.runTransaction(fb.db, async transaction => {
+      const userDeviceSnap = await transaction.get(userDeviceRef);
+      if (userDeviceSnap.exists()) {
+        throw new Error('Device already added.');
+      }
 
-  const dev = makeDeviceState(id, sec, nick);
-  devices.set(id, dev);
+      const deviceSnap = await transaction.get(deviceRef);
+      if (deviceSnap.exists()) {
+        const ownerUid = deviceSnap.data().ownerUid;
+        if (ownerUid && ownerUid !== currentUser.uid) {
+          throw new Error('Device already linked to another account.');
+        }
+      }
 
-  await saveDeviceToFirestore(dev);
+      transaction.set(deviceRef, {
+        ownerUid: currentUser.uid,
+        paired: true,
+        pairedAt: fb.serverTimestamp(),
+      }, { merge: true });
 
-  // Close the modal — dashboard is already showing
-  closePairModal();
+      transaction.set(userDeviceRef, {
+        secret,
+        nickname: nick,
+        addedAt: fb.serverTimestamp(),
+      });
+    });
 
-  // Make sure dashboard is visible (it already should be)
-  screenPair.classList.add('hidden');
-  screenDash.classList.remove('hidden');
+    if (!devices.has(deviceId)) {
+      addDeviceFromSaved({ id: deviceId, secret, nickname: nick });
+    }
 
-  renderDeviceList();
-  setActiveDevice(id);
-  connectMQTT(id);
+    screenPair.classList.add('hidden');
+    screenDash.classList.remove('hidden');
+    renderDeviceList();
+    setActiveDevice(deviceId);
 
-  toast(`Device ${nick || id} added`, 'success');
-}
-
-/* ─── PAIRING (first-run screen — very first device) ────── */
-async function handlePairFirst() {
-  const id   = deviceInputFirst.value.trim().toUpperCase();
-  const sec  = secretInputFirst.value.trim();
-  const nick = deviceNicknameFirst.value.trim();
-
-  if (!id)          { toast('Enter a Device ID', 'error');       deviceInputFirst.focus();  return; }
-  if (id.length < 8){ toast('Device ID too short', 'error');     deviceInputFirst.focus();  return; }
-  if (!sec)         { toast('Enter the Device Secret', 'error'); secretInputFirst.focus();  return; }
-  if (devices.has(id)) { toast('Device already added', 'error'); return; }
-
-  const dev = makeDeviceState(id, sec, nick);
-  devices.set(id, dev);
-
-  await saveDeviceToFirestore(dev);
-
-  // Transition from first-run screen to dashboard
-  screenPair.classList.add('hidden');
-  screenDash.classList.remove('hidden');
-
-  renderDeviceList();
-  setActiveDevice(id);
-  connectMQTT(id);
-
-  toast(`Device ${nick || id} added`, 'success');
+    toast(`Device ${nick || deviceId} added`, 'success');
+  } catch (e) {
+    const message = e && e.message ? e.message : 'Device pairing failed.';
+    toast(message, 'error');
+  }
 }
 
 /* ─── DISCONNECT / REMOVE ───────────────────────────────── */
@@ -378,7 +401,7 @@ async function removeDevice(id) {
   if (devices.size === 0) {
     activeDeviceId = null;
     screenDash.classList.add('hidden');
-    showFirstRunPairScreen();
+    screenPair.classList.remove('hidden');
     renderDeviceList();
   } else {
     if (id === activeDeviceId) {
@@ -487,7 +510,7 @@ function renderDashboard(dev) {
   statHeartbeat.textContent = s.heartbeat;
   statHeartbeat.className  = 'stat-val ' + (dev.lastHeartbeat ? 'good' : '');
 
-  buildQR(dev.id);
+  buildQR(dev);
   renderLog();
 }
 
@@ -668,20 +691,22 @@ function setDeviceStatus(state) {
 }
 
 /* ─── QR CODE ───────────────────────────────────────────── */
-function buildQR(deviceId) {
+function buildQR(dev) {
   qrCode.innerHTML = '';
-  const url = `${location.origin}${location.pathname}?device=${deviceId}`;
-  qrUrl.textContent = url;
+  const payload = JSON.stringify({ deviceId: dev.id, secret: dev.secret });
+  qrUrl.textContent = payload;
   new QRCode(qrCode, {
-    text: url, width: 148, height: 148,
+    text: payload, width: 148, height: 148,
     colorDark: '#000000', colorLight: '#ffffff',
     correctLevel: QRCode.CorrectLevel.M,
   });
 }
 function handleCopyUrl() {
-  const url = `${location.origin}${location.pathname}?device=${activeDeviceId}`;
-  navigator.clipboard.writeText(url)
-    .then(() => toast('Link copied!', 'success'))
+  const dev = activeDeviceId ? devices.get(activeDeviceId) : null;
+  if (!dev) return;
+  const payload = JSON.stringify({ deviceId: dev.id, secret: dev.secret });
+  navigator.clipboard.writeText(payload)
+    .then(() => toast('QR payload copied!', 'success'))
     .catch(() => toast('Copy failed', 'error'));
 }
 

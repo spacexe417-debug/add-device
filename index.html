@@ -116,8 +116,22 @@
               <label for="deviceNickname">Nickname (optional)</label>
               <input type="text" id="deviceNickname" placeholder="e.g. Living Room, Bedroom…" spellcheck="false" />
             </div>
+            <div class="pair-guide" aria-label="How to add a device">
+              <div class="guide-step">
+                <span class="guide-num">1</span>
+                <p>Power on your device and keep the QR code ready.</p>
+              </div>
+              <div class="guide-step">
+                <span class="guide-num">2</span>
+                <p>Tap Scan Device QR and allow camera permission.</p>
+              </div>
+              <div class="guide-step">
+                <span class="guide-num">3</span>
+                <p>Point the camera at the QR code. The dashboard opens automatically.</p>
+              </div>
+            </div>
             <button class="btn btn-primary btn-full" id="pairBtn">Scan Device QR</button>
-            <p class="hint-text">QR payload format: {"deviceId":"OM-XXXXXXXXXXXX","secret":"XXXXXXXXXXXXXXXX"}</p>
+            <p class="hint-text">No typing needed. Scan the device QR to add it to your account.</p>
           </div>
         </div>
       </section>

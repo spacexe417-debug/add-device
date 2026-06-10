@@ -555,3 +555,135 @@ button { cursor: pointer; border: none; background: none; }
   .dash-topbar { gap: 0.75rem; }
   .card { padding: 1.25rem; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Multi-Device Tab Bar
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── DEVICE TAB BAR ── */
+.device-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 1rem 0 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+}
+.device-tab-bar::-webkit-scrollbar { display: none; }
+
+/* ── INDIVIDUAL DEVICE TAB ── */
+.dev-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem 0.45rem 0.65rem;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+  position: relative;
+  bottom: -1px;
+  flex-shrink: 0;
+  max-width: 220px;
+}
+.dev-tab:hover {
+  background: var(--bg-card);
+  color: var(--text-1);
+}
+.dev-tab.active {
+  background: var(--bg-card);
+  border-color: var(--border-bright);
+  border-bottom-color: var(--bg-card);
+  color: var(--cyan);
+}
+
+/* Tab status dot */
+.tab-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+}
+
+/* Tab label */
+.tab-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* Tab close button */
+.tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  color: var(--text-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+  flex-shrink: 0;
+  line-height: 1;
+}
+.dev-tab:hover .tab-close,
+.dev-tab.active .tab-close {
+  opacity: 1;
+}
+.tab-close:hover {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+/* ── ADD DEVICE BUTTON ── */
+.btn-add-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent;
+  border: 1px dashed var(--border-bright);
+  border-bottom: none;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition);
+  position: relative;
+  bottom: -1px;
+  flex-shrink: 0;
+}
+.btn-add-device:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: var(--cyan-dim);
+}
+.add-icon {
+  font-size: 1rem;
+  line-height: 1;
+  font-weight: 400;
+}
+
+/* ── RESPONSIVE TABS ── */
+@media (max-width: 500px) {
+  .dev-tab { max-width: 140px; font-size: 0.68rem; }
+  .btn-add-device { font-size: 0.68rem; }
+}

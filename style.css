@@ -384,7 +384,7 @@ button { cursor: pointer; border: none; background: none; }
   flex: 1;
   border-radius: var(--radius-sm);
 }
-.btn-off:hover { background: rgba(255,61,113,0.22); box-shadow: 0 0 16px rgba(255,61,113,0.3); }
+.btn-off:hover { background: rgba(229,35,46,0.22); box-shadow: 0 0 16px rgba(229,35,46,0.3); }
 
 .btn-add-device {
   display: inline-flex;
@@ -404,7 +404,7 @@ button { cursor: pointer; border: none; background: none; }
   flex-shrink: 0;
 }
 .btn-add-device:hover {
-  background: rgba(0,229,255,0.18);
+  background: rgba(255,210,26,0.18);
   box-shadow: 0 0 14px var(--cyan-glow);
 }
 
@@ -503,6 +503,63 @@ button { cursor: pointer; border: none; background: none; }
   font-size: 0.8rem;
   line-height: 1.5;
   text-align: center;
+}
+
+/* ── TUTORIAL ── */
+.tutorial-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  pointer-events: none;
+}
+.tutorial-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.58);
+  pointer-events: auto;
+}
+.tutorial-spotlight {
+  position: fixed;
+  border: 2px solid var(--cyan);
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.42), 0 0 24px var(--cyan-glow);
+  transition: top var(--transition), left var(--transition), width var(--transition), height var(--transition);
+  pointer-events: none;
+}
+.tutorial-card {
+  position: fixed;
+  width: min(340px, calc(100vw - 2rem));
+  background: rgba(19, 22, 32, 0.98);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 1rem;
+  pointer-events: auto;
+}
+.tutorial-progress {
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+}
+.tutorial-card h2 {
+  color: var(--text-1);
+  font-size: 1rem;
+  margin-bottom: 0.45rem;
+}
+.tutorial-card p {
+  color: var(--text-2);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+.tutorial-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
 }
 
 /* ── DASH LAYOUT (sidebar + main) ── */
@@ -819,10 +876,10 @@ button { cursor: pointer; border: none; background: none; }
 .log-body::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
 .log-empty { color: var(--text-3); font-size: 0.78rem; text-align: center; margin-top: 1.5rem; }
 .log-entry { display: flex; gap: 0.5rem; padding: 4px 6px; border-radius: 4px; line-height: 1.45; }
-.log-entry.in  { background: rgba(0,229,255,0.05); }
+.log-entry.in  { background: rgba(255,210,26,0.06); }
 .log-entry.out { background: rgba(255,255,255,0.06); }
 .log-entry.sys { background: rgba(255,179,0,0.05); }
-.log-entry.err { background: rgba(255,61,113,0.05); }
+.log-entry.err { background: rgba(229,35,46,0.06); }
 .log-time { color: var(--text-3); flex-shrink: 0; }
 .log-dir  { flex-shrink: 0; }
 .log-dir.in  { color: var(--cyan); }

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OmniHome — ESP32 Controller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- MQTT.js via CDN -->
+  <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+  <!-- QRCode.js via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════ HEADER -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-mark">⬡</span>
+        <span class="logo-text">OmniHome</span>
+      </div>
+      <div class="header-status" id="brokerStatus">
+        <span class="status-dot" id="brokerDot"></span>
+        <span id="brokerLabel">Disconnected</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════ MAIN -->
+  <main>
+
+    <!-- ── PAIRING SCREEN ── -->
+    <section class="screen" id="screenPair">
+      <div class="screen-center">
+        <div class="pair-card">
+          <div class="pair-icon">📡</div>
+          <h1 class="pair-title">Add a Device</h1>
+          <p class="pair-sub">Scan the QR code printed on your ESP32 module, or paste the device ID below.</p>
+
+          <div class="input-group">
+            <label for="deviceInput">Device ID</label>
+            <input
+              type="text"
+              id="deviceInput"
+              placeholder="e.g. OM-7F2A9D4E8C1B6M3K"
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="input-group">
+            <label for="secretInput">Device Secret</label>
+            <input
+              type="password"
+              id="secretInput"
+              placeholder="e.g. 8e4f2c91a7d5b8e3d7a9f4b"
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </div>
+
+          <button class="btn btn-primary btn-full" id="pairBtn">Connect Device</button>
+
+          <div class="divider"><span>or open via QR link</span></div>
+          <p class="hint-text">The URL from your QR code will auto-fill the Device ID. You only need to enter your secret.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── DASHBOARD SCREEN ── -->
+    <section class="screen hidden" id="screenDash">
+
+      <!-- Device Header Bar -->
+      <div class="dash-topbar">
+        <div class="device-meta">
+          <span class="device-label">DEVICE</span>
+          <span class="device-id" id="dashDeviceId">—</span>
+        </div>
+        <div class="device-conn">
+          <span class="status-dot" id="deviceDot"></span>
+          <span id="deviceStatus">Offline</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="disconnectBtn">← Disconnect</button>
+      </div>
+
+      <!-- Main Grid -->
+      <div class="dash-grid">
+
+        <!-- LED Control Card -->
+        <div class="card card-led">
+          <div class="card-header">
+            <span class="card-eyebrow">GPIO 2</span>
+            <h2 class="card-title">LED Control</h2>
+          </div>
+
+          <div class="led-visual" id="ledVisual">
+            <div class="led-bulb" id="ledBulb">
+              <div class="led-core"></div>
+              <div class="led-glow"></div>
+            </div>
+            <span class="led-state-label" id="ledStateLabel">OFF</span>
+          </div>
+
+          <div class="led-controls">
+            <button class="btn btn-on" id="btnOn">Turn ON</button>
+            <button class="btn btn-off" id="btnOff">Turn OFF</button>
+          </div>
+        </div>
+
+        <!-- Status Card -->
+        <div class="card card-status">
+          <div class="card-header">
+            <span class="card-eyebrow">Live Data</span>
+            <h2 class="card-title">Device Status</h2>
+          </div>
+
+          <div class="stat-list">
+            <div class="stat-row">
+              <span class="stat-key">Online</span>
+              <span class="stat-val" id="statOnline">—</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-key">LED State</span>
+              <span class="stat-val" id="statLed">—</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-key">Uptime</span>
+              <span class="stat-val" id="statUptime">—</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-key">Last Seen</span>
+              <span class="stat-val" id="statLastSeen">—</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-key">Heartbeat</span>
+              <span class="stat-val" id="statHeartbeat">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- QR Code Card -->
+        <div class="card card-qr">
+          <div class="card-header">
+            <span class="card-eyebrow">Share / Pair</span>
+            <h2 class="card-title">QR Code</h2>
+          </div>
+          <div class="qr-wrap" id="qrCode"></div>
+          <p class="qr-url" id="qrUrl"></p>
+          <button class="btn btn-ghost btn-sm" id="copyUrlBtn">Copy Link</button>
+        </div>
+
+        <!-- Log Card -->
+        <div class="card card-log">
+          <div class="card-header">
+            <span class="card-eyebrow">MQTT</span>
+            <h2 class="card-title">Activity Log</h2>
+            <button class="btn btn-ghost btn-xs log-clear-btn" id="clearLogBtn">Clear</button>
+          </div>
+          <div class="log-body" id="logBody">
+            <div class="log-empty">No messages yet…</div>
+          </div>
+        </div>
+
+      </div><!-- /dash-grid -->
+    </section>
+
+  </main>
+
+  <!-- ═══════════════════════════════════════════════ TOAST -->
+  <div class="toast-stack" id="toastStack"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,1 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ellectra Admin - Device Transfer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #08090c;
+      --bg-card: #131620;
+      --bg-input: #191d2a;
+      --border: #1f253a;
+      --border-bright: #2e3655;
+      --yellow: #ffd21a;
+      --yellow-dim: rgba(255, 210, 26, 0.13);
+      --yellow-glow: rgba(255, 210, 26, 0.34);
+      --white: #ffffff;
+      --red: #e5232e;
+      --red-dim: rgba(229, 35, 46, 0.14);
+      --text-1: #ffffff;
+      --text-2: #d8dbe3;
+      --text-3: #687087;
+      --font-ui: 'Inter', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+    }
 
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background:
+        linear-gradient(160deg, rgba(8,9,12,0.72), rgba(8,9,12,0.92)),
+        #08090c;
+      color: var(--text-1);
+      font-family: var(--font-ui);
+      line-height: 1.6;
+    }
+    .shell {
+      width: min(980px, 100%);
+      margin: 0 auto;
+      padding: 2rem 1rem 4rem;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .brand img {
+      width: 110px;
+      max-height: 42px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 14px var(--yellow-glow));
+    }
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+    .eyebrow {
+      color: var(--yellow);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1 {
+      font-size: 1.45rem;
+      line-height: 1.2;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .user-pill {
+      color: var(--text-2);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    .panel {
+      background: rgba(19, 22, 32, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 2px 28px rgba(0,0,0,0.55);
+      padding: 1.4rem;
+    }
+    .panel h2 {
+      font-size: 1rem;
+      margin-bottom: 0.35rem;
+    }
+    .sub {
+      color: var(--text-2);
+      font-size: 0.88rem;
+      margin-bottom: 1.3rem;
+    }
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+    label {
+      color: var(--text-2);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    input {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-1);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      outline: none;
+      padding: 0.75rem 0.9rem;
+    }
+    input:focus {
+      border-color: var(--yellow);
+      box-shadow: 0 0 0 3px var(--yellow-dim);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.65rem;
+      align-items: end;
+    }
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      line-height: 1;
+      padding: 0.8rem 1rem;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+    .primary {
+      width: 100%;
+      background: var(--yellow);
+      color: #000;
+    }
+    .primary:hover {
+      background: #ffe45c;
+      box-shadow: 0 0 20px var(--yellow-glow);
+    }
+    .ghost {
+      background: transparent;
+      border: 1px solid var(--border-bright);
+      color: var(--text-2);
+    }
+    .ghost:hover {
+      border-color: var(--yellow);
+      color: var(--yellow);
+    }
+    .danger {
+      background: var(--red-dim);
+      border: 1px solid var(--red);
+      color: var(--red);
+    }
+    .status-box {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(8, 9, 12, 0.38);
+      padding: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.8rem;
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
+    }
+    .status-row:last-child { border-bottom: 0; }
+    .status-row span:first-child { color: var(--text-3); }
+    .status-row span:last-child {
+      color: var(--text-1);
+      font-family: var(--font-mono);
+      text-align: right;
+      word-break: break-all;
+    }
+    .note {
+      color: var(--text-2);
+      font-size: 0.8rem;
+      line-height: 1.55;
+    }
+    .note strong { color: var(--yellow); }
+    .log {
+      min-height: 92px;
+      max-height: 260px;
+      overflow: auto;
+      background: rgba(8, 9, 12, 0.42);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      color: var(--text-2);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      word-break: break-word;
+    }
+    .log .ok { color: var(--white); }
+    .log .err { color: var(--red); }
+    .hidden { display: none !important; }
+    @media (max-width: 760px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .header-actions { justify-content: flex-start; }
+      .grid { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand">
+        <img src="https://raw.githubusercontent.com/pprojectcentreee/web-host-/main/Ellectra_w01wap.png" alt="Ellectra" />
+        <div class="brand-text">
+          <span class="eyebrow">Admin Panel</span>
+          <h1>Device Transfer</h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="user-pill" id="adminUser">Not signed in</span>
+        <button class="ghost" id="signInBtn">Sign in with Google</button>
+        <button class="ghost hidden" id="signOutBtn">Sign Out</button>
+      </div>
+    </header>
+
+    <section class="grid">
+      <form class="panel" id="transferForm">
+        <p class="eyebrow">Ownership</p>
+        <h2>Transfer Device Owner</h2>
+        <p class="sub">Move one paired device from the current owner account to another user account.</p>
+
+        <div class="input-group">
+          <label for="deviceId">Device ID</label>
+          <input id="deviceId" placeholder="OM-XXXXXXXXXXXX" autocomplete="off" spellcheck="false" />
+        </div>
+
+        <div class="input-group">
+          <label for="oldOwnerUid">Current owner UID</label>
+          <input id="oldOwnerUid" placeholder="Leave blank to use devices/{deviceId}.ownerUid" autocomplete="off" spellcheck="false" />
+        </div>
+
+        <div class="row">
+          <div class="input-group">
+            <label for="newOwnerUid">New owner UID</label>
+            <input id="newOwnerUid" placeholder="Firebase Auth UID of new owner" autocomplete="off" spellcheck="false" />
+          </div>
+          <button class="ghost" type="button" id="useMyUidBtn">Use my UID</button>
+        </div>
+
+        <button class="primary" type="submit" id="transferBtn">Transfer Device</button>
+      </form>
+
+      <aside class="panel">
+        <p class="eyebrow">Access</p>
+        <h2>Admin Status</h2>
+        <div class="status-box">
+          <div class="status-row">
+            <span>Signed in</span>
+            <span id="signedInStatus">No</span>
+          </div>
+          <div class="status-row">
+            <span>Admin</span>
+            <span id="adminStatus">No</span>
+          </div>
+          <div class="status-row">
+            <span>Your UID</span>
+            <span id="currentUid">-</span>
+          </div>
+        </div>
+        <p class="note">
+          Create <strong>admins/{your_uid}</strong> in Firestore before using this page.
+          The transfer copies the saved device secret and nickname to the new owner, deletes the old user device entry, and updates device ownership.
+        </p>
+      </aside>
+
+      <section class="panel">
+        <p class="eyebrow">Result</p>
+        <h2>Transfer Log</h2>
+        <div class="log" id="logBox">Waiting for admin sign-in...</div>
+      </section>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc, runTransaction, serverTimestamp }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBR3F9w-C94cAVMBScuu_3UQBMPoOWn6Vk",
+      authDomain: "device-add-4af1f.firebaseapp.com",
+      projectId: "device-add-4af1f",
+      storageBucket: "device-add-4af1f.firebasestorage.app",
+      messagingSenderId: "868461807973",
+      appId: "1:868461807973:web:6f6a81f51d27c96137b98c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const $ = id => document.getElementById(id);
+    const signInBtn = $('signInBtn');
+    const signOutBtn = $('signOutBtn');
+    const adminUser = $('adminUser');
+    const signedInStatus = $('signedInStatus');
+    const adminStatus = $('adminStatus');
+    const currentUid = $('currentUid');
+    const transferForm = $('transferForm');
+    const transferBtn = $('transferBtn');
+    const deviceIdInput = $('deviceId');
+    const oldOwnerUidInput = $('oldOwnerUid');
+    const newOwnerUidInput = $('newOwnerUid');
+    const useMyUidBtn = $('useMyUidBtn');
+    const logBox = $('logBox');
+
+    let currentUser = null;
+    let isAdmin = false;
+
+    signInBtn.addEventListener('click', async () => {
+      try {
+        await signInWithPopup(auth, new GoogleAuthProvider());
+      } catch (e) {
+        writeLog(`Sign-in failed: ${e.message}`, 'err');
+      }
+    });
+
+    signOutBtn.addEventListener('click', async () => {
+      await signOut(auth);
+    });
+
+    useMyUidBtn.addEventListener('click', () => {
+      if (currentUser) newOwnerUidInput.value = currentUser.uid;
+    });
+
+    transferForm.addEventListener('submit', event => {
+      event.preventDefault();
+      transferDevice();
+    });
+
+    onAuthStateChanged(auth, async user => {
+      currentUser = user;
+      isAdmin = false;
+      updateAuthUi();
+
+      if (!user) {
+        writeLog('Waiting for admin sign-in...');
+        return;
+      }
+
+      try {
+        const adminSnap = await getDoc(doc(db, 'admins', user.uid));
+        isAdmin = adminSnap.exists();
+        updateAuthUi();
+        writeLog(isAdmin
+          ? 'Admin verified. Enter transfer details.'
+          : `Access denied. Create admins/${user.uid} in Firestore first.`,
+          isAdmin ? 'ok' : 'err'
+        );
+      } catch (e) {
+        writeLog(`Admin check failed: ${e.message}`, 'err');
+      }
+    });
+
+    function updateAuthUi() {
+      const signedIn = !!currentUser;
+      signInBtn.classList.toggle('hidden', signedIn);
+      signOutBtn.classList.toggle('hidden', !signedIn);
+      adminUser.textContent = signedIn ? (currentUser.email || currentUser.uid) : 'Not signed in';
+      signedInStatus.textContent = signedIn ? 'Yes' : 'No';
+      adminStatus.textContent = isAdmin ? 'Yes' : 'No';
+      currentUid.textContent = signedIn ? currentUser.uid : '-';
+      transferBtn.disabled = !signedIn || !isAdmin;
+    }
+
+    async function transferDevice() {
+      if (!currentUser) {
+        writeLog('Sign in first.', 'err');
+        return;
+      }
+      if (!isAdmin) {
+        writeLog('Only admins can transfer devices.', 'err');
+        return;
+      }
+
+      const deviceId = deviceIdInput.value.trim().toUpperCase();
+      const typedOldOwnerUid = oldOwnerUidInput.value.trim();
+      const newOwnerUid = newOwnerUidInput.value.trim();
+
+      if (!deviceId) {
+        writeLog('Enter a Device ID.', 'err');
+        deviceIdInput.focus();
+        return;
+      }
+      if (!newOwnerUid) {
+        writeLog('Enter the new owner UID.', 'err');
+        newOwnerUidInput.focus();
+        return;
+      }
+
+      transferBtn.disabled = true;
+      writeLog(`Transferring ${deviceId}...`);
+
+      try {
+        let sourceUid = '';
+        await runTransaction(db, async transaction => {
+          const deviceRef = doc(db, 'devices', deviceId);
+          const deviceSnap = await transaction.get(deviceRef);
+
+          if (!deviceSnap.exists()) {
+            throw new Error('Device document not found.');
+          }
+
+          const deviceData = deviceSnap.data();
+          sourceUid = typedOldOwnerUid || deviceData.ownerUid || '';
+          if (!sourceUid) {
+            throw new Error('Current owner UID not found. Enter it manually.');
+          }
+          if (deviceData.ownerUid && deviceData.ownerUid !== sourceUid) {
+            throw new Error(`Device owner mismatch. Firestore owner is ${deviceData.ownerUid}.`);
+          }
+          if (sourceUid === newOwnerUid) {
+            throw new Error('New owner is already the current owner.');
+          }
+
+          const oldUserDeviceRef = doc(db, 'users', sourceUid, 'devices', deviceId);
+          const newUserDeviceRef = doc(db, 'users', newOwnerUid, 'devices', deviceId);
+          const oldUserDeviceSnap = await transaction.get(oldUserDeviceRef);
+          const newUserDeviceSnap = await transaction.get(newUserDeviceRef);
+
+          if (!oldUserDeviceSnap.exists()) {
+            throw new Error(`Source user device entry not found at users/${sourceUid}/devices/${deviceId}.`);
+          }
+          if (newUserDeviceSnap.exists()) {
+            throw new Error('Device already exists under the new owner.');
+          }
+
+          const savedDevice = oldUserDeviceSnap.data();
+          if (!savedDevice.secret) {
+            throw new Error('Source user device entry is missing its secret. Transfer stopped.');
+          }
+          transaction.set(newUserDeviceRef, {
+            secret: savedDevice.secret,
+            nickname: savedDevice.nickname || '',
+            addedAt: serverTimestamp(),
+            transferredAt: serverTimestamp(),
+            transferredFromUid: sourceUid,
+            transferredByUid: currentUser.uid,
+          });
+          transaction.delete(oldUserDeviceRef);
+          transaction.set(deviceRef, {
+            ownerUid: newOwnerUid,
+            paired: true,
+            transferredAt: serverTimestamp(),
+            transferredFromUid: sourceUid,
+            transferredByUid: currentUser.uid,
+          }, { merge: true });
+        });
+
+        writeLog(`Transfer complete. ${deviceId} moved from ${sourceUid} to ${newOwnerUid}.`, 'ok');
+        oldOwnerUidInput.value = '';
+      } catch (e) {
+        writeLog(`Transfer failed: ${e.message}`, 'err');
+      } finally {
+        transferBtn.disabled = !currentUser || !isAdmin;
+      }
+    }
+
+    function writeLog(message, type = '') {
+      const safe = escapeHtml(message);
+      logBox.innerHTML = `<span class="${type}">${safe}</span>`;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+  </script>
+</body>
+</html>

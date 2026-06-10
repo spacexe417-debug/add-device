@@ -6,7 +6,10 @@
 'use strict';
 
 /* ─── BROKER CONFIG ─────────────────────────────────────── */
-const BROKER_URL  = 'wss://broker.emqx.io:8084/mqtt';
+// Using ws:// port 8083 (plain WebSocket) to match ESP32's plain
+// TCP port 1883. Both are unencrypted — same broker, different
+// transport. Use wss://broker.emqx.io:8084 only if ESP32 uses 8883.
+const BROKER_URL  = 'ws://broker.emqx.io:8083/mqtt';
 const BROKER_OPTS = {
   clientId: 'omnihome_web_' + Math.random().toString(36).slice(2, 9),
   username: '',          // leave blank for public broker
@@ -15,6 +18,7 @@ const BROKER_OPTS = {
   reconnectPeriod: 3000,
   connectTimeout: 10000,
   clean: true,
+  protocolVersion: 4,    // MQTT 3.1.1
 };
 
 /* ─── APP STATE ─────────────────────────────────────────── */

@@ -27,8 +27,9 @@ const BROKER_OPTS = () => ({
   }>
 */
 const devices = new Map();
-let activeDeviceId = null;
-let currentUser    = null;
+let activeDeviceId          = null;
+let pendingActivateDeviceId = null;   // set after pairing; consumed by onSnapshot
+let currentUser             = null;
 let firestoreUnsub = null;   // Firestore snapshot unsubscribe
 let qrScanner      = null;
 let scannerBusy    = false;
@@ -231,9 +232,15 @@ async function loadDevicesFromFirestore(uid) {
       if (change.type === 'added' && !devices.has(change.doc.id)) {
         const data = change.doc.data();
         addDeviceFromSaved({ id: change.doc.id, secret: data.secret, nickname: data.nickname || '' });
+
+        // If this is a device we just paired, activate it now
+        if (pendingActivateDeviceId === change.doc.id) {
+          pendingActivateDeviceId = null;
+          // Small defer so connectMQTT finishes setting up the client first
+          setTimeout(() => setActiveDevice(change.doc.id), 50);
+        }
       }
       if (change.type === 'removed' && devices.has(change.doc.id)) {
-        // Removed from another tab/session
         const dev = devices.get(change.doc.id);
         if (dev && dev.mqttClient) dev.mqttClient.end(true);
         devices.delete(change.doc.id);
@@ -446,14 +453,17 @@ async function pairScannedDevice({ deviceId, secret }) {
       });
     });
 
-    if (!devices.has(deviceId)) {
-      addDeviceFromSaved({ id: deviceId, secret, nickname: nick });
-    }
+    // Do NOT call addDeviceFromSaved here — the Firestore onSnapshot 'added'
+    // event fires after the transaction and calls it exactly once.
+    // Calling it here too causes connectMQTT to run twice; the second call
+    // does mqttClient.end(true) on the already-working connection.
 
     screenPair.classList.add('hidden');
     screenDash.classList.remove('hidden');
+
+    // Mark this device to be auto-selected when the snapshot arrives
+    pendingActivateDeviceId = deviceId;
     renderDeviceList();
-    setActiveDevice(deviceId);
 
     toast(`Device ${nick || deviceId} added`, 'success');
   } catch (e) {
@@ -585,6 +595,7 @@ function handleDisconnect() {
 }
 
 async function removeDevice(id) {
+  if (pendingActivateDeviceId === id) pendingActivateDeviceId = null;
   const dev = devices.get(id);
   if (dev && dev.mqttClient) dev.mqttClient.end(true);
   devices.delete(id);
@@ -652,7 +663,12 @@ function renderDeviceList() {
     item.dataset.deviceId = id;
 
     const dot = document.createElement('span');
-    dot.className = 'dev-item-dot status-dot ' + dev.brokerStatus;
+    // Show device online status if we have it, else fall back to broker status
+    const dotState = dev.deviceStatus === 'online' ? 'online'
+                   : dev.brokerStatus === 'connecting' ? 'connecting'
+                   : dev.brokerStatus === 'online' ? 'connecting'  // broker up, waiting for device ping
+                   : 'offline';
+    dot.className = 'dev-item-dot status-dot ' + dotState;
 
     const info = document.createElement('div');
     info.className = 'dev-item-info';
@@ -709,7 +725,14 @@ function renderDashboard(dev) {
 function connectMQTT(deviceId) {
   const dev = devices.get(deviceId);
   if (!dev) return;
-  if (dev.mqttClient) dev.mqttClient.end(true);
+
+  // If a client already exists and is connected/connecting, don't restart it.
+  // This prevents the double-connect race when Firestore snapshot fires after
+  // pairScannedDevice (both used to call addDeviceFromSaved → connectMQTT).
+  if (dev.mqttClient) {
+    if (dev.mqttClient.connected || dev.brokerStatus === 'connecting') return;
+    dev.mqttClient.end(true);
+  }
 
   dev.brokerStatus = 'connecting';
   if (deviceId === activeDeviceId) setBrokerStatus('connecting');

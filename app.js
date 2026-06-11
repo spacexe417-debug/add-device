@@ -23,8 +23,7 @@ const BROKER_OPTS = () => ({
     id, secret, nickname,
     mqttClient, ledState, lastHeartbeat,
     brokerStatus, deviceStatus,
-    stats: { online, led, uptime, lastSeen, heartbeat },
-    logEntries: []
+    stats: { online, led, uptime, lastSeen, heartbeat }
   }>
 */
 const devices = new Map();
@@ -74,11 +73,6 @@ const statLed           = $('statLed');
 const statUptime        = $('statUptime');
 const statLastSeen      = $('statLastSeen');
 const statHeartbeat     = $('statHeartbeat');
-const qrCode            = $('qrCode');
-const qrUrl             = $('qrUrl');
-const copyUrlBtn        = $('copyUrlBtn');
-const logBody           = $('logBody');
-const clearLogBtn       = $('clearLogBtn');
 const toastStack        = $('toastStack');
 const tutorialLayer     = $('tutorialLayer');
 const tutorialBackdrop  = $('tutorialBackdrop');
@@ -126,18 +120,6 @@ const tutorialSteps = [
     target: 'btnOff',
     title: 'Turn OFF',
     text: 'Press Turn OFF to send the LED off command to the selected device.',
-    screen: 'dash',
-  },
-  {
-    target: 'copyUrlBtn',
-    title: 'Copy QR payload',
-    text: 'This copies the selected device QR payload. Use it only when you need to recreate or share that device QR securely.',
-    screen: 'dash',
-  },
-  {
-    target: 'clearLogBtn',
-    title: 'Clear activity log',
-    text: 'This clears the visible MQTT activity messages for the selected device. It does not remove your device.',
     screen: 'dash',
   },
   {
@@ -207,11 +189,6 @@ function waitForFirebase() {
   addDeviceBtn.addEventListener('click', showPairScreen);
   btnOn.addEventListener('click', () => sendLedCommand(activeDeviceId, 1));
   btnOff.addEventListener('click', () => sendLedCommand(activeDeviceId, 0));
-  copyUrlBtn.addEventListener('click', handleCopyUrl);
-  clearLogBtn.addEventListener('click', () => {
-    const dev = devices.get(activeDeviceId);
-    if (dev) { dev.logEntries = []; renderLog(); }
-  });
   deviceNickname.addEventListener('keydown', e => { if (e.key === 'Enter') startQrScanner(); });
 })();
 
@@ -235,10 +212,6 @@ async function showApp(user) {
   userAvatar.style.display = user.photoURL ? 'block' : 'none';
   userName.textContent = user.displayName || user.email || '';
 
-  // Always show Add Device page after login
-  screenDash.classList.add('hidden');
-  screenPair.classList.remove('hidden');
-
   await loadDevicesFromFirestore(user.uid);
   maybeStartTutorial();
 }
@@ -250,6 +223,9 @@ async function loadDevicesFromFirestore(uid) {
 
   // Live listener for realtime sync
   if (firestoreUnsub) firestoreUnsub();
+
+  let firstSnapshot = true;  // flag so we only auto-navigate once
+
   firestoreUnsub = fb.onSnapshot(devicesRef, snapshot => {
     snapshot.docChanges().forEach(change => {
       if (change.type === 'added' && !devices.has(change.doc.id)) {
@@ -268,7 +244,26 @@ async function loadDevicesFromFirestore(uid) {
         renderDeviceList();
       }
     });
+
     renderDeviceList();
+
+    // On login: if the user already has saved devices, go straight to the
+    // dashboard instead of the Pair screen.
+    if (firstSnapshot) {
+      firstSnapshot = false;
+      if (devices.size > 0) {
+        screenPair.classList.add('hidden');
+        screenDash.classList.remove('hidden');
+        // Auto-select the first device so the panel is immediately visible
+        if (!activeDeviceId) {
+          setActiveDevice(devices.keys().next().value);
+        }
+      } else {
+        // No saved devices — show Pair screen
+        screenDash.classList.add('hidden');
+        screenPair.classList.remove('hidden');
+      }
+    }
   });
 }
 
@@ -313,7 +308,6 @@ function makeDeviceState(id, secret, nickname) {
     brokerStatus: 'offline',
     deviceStatus: 'offline',
     stats: { online: '—', led: '—', uptime: '—', lastSeen: '—', heartbeat: '—' },
-    logEntries: [],
   };
 }
 
@@ -709,9 +703,6 @@ function renderDashboard(dev) {
   statLastSeen.className   = 'stat-val';
   statHeartbeat.textContent = s.heartbeat;
   statHeartbeat.className  = 'stat-val ' + (dev.lastHeartbeat ? 'good' : '');
-
-  buildQR(dev);
-  renderLog();
 }
 
 /* ─── MQTT ──────────────────────────────────────────────── */
@@ -724,7 +715,7 @@ function connectMQTT(deviceId) {
   if (deviceId === activeDeviceId) setBrokerStatus('connecting');
   renderDeviceList();
 
-  log(deviceId, 'sys', `Connecting to broker…`);
+  console.log('[SYS] ' + deviceId + ' | ' + `Connecting to broker…`);
 
   const client = mqtt.connect(BROKER_URL, BROKER_OPTS());
   dev.mqttClient = client;
@@ -733,7 +724,7 @@ function connectMQTT(deviceId) {
     dev.brokerStatus = 'online';
     if (deviceId === activeDeviceId) setBrokerStatus('online');
     renderDeviceList();
-    log(deviceId, 'sys', 'Broker connected ✓');
+    console.log('[SYS] ' + deviceId + ' | ' + 'Broker connected ✓');
     if (deviceId === activeDeviceId) toast('Broker connected', 'success');
     subscribeTopics(deviceId);
   });
@@ -742,7 +733,7 @@ function connectMQTT(deviceId) {
     dev.brokerStatus = 'connecting';
     if (deviceId === activeDeviceId) setBrokerStatus('connecting');
     renderDeviceList();
-    log(deviceId, 'sys', 'Reconnecting…');
+    console.log('[SYS] ' + deviceId + ' | ' + 'Reconnecting…');
   });
 
   client.on('offline', () => {
@@ -750,14 +741,14 @@ function connectMQTT(deviceId) {
     dev.deviceStatus = 'offline';
     if (deviceId === activeDeviceId) { setBrokerStatus('offline'); setDeviceStatus('offline'); }
     renderDeviceList();
-    log(deviceId, 'err', 'Broker offline');
+    console.warn('[ERR] ' + deviceId + ' | ' + 'Broker offline');
   });
 
   client.on('error', err => {
     dev.brokerStatus = 'offline';
     if (deviceId === activeDeviceId) setBrokerStatus('offline');
     renderDeviceList();
-    log(deviceId, 'err', 'MQTT error: ' + err.message);
+    console.warn('[ERR] ' + deviceId + ' | ' + 'MQTT error: ' + err.message);
     if (deviceId === activeDeviceId) toast('MQTT error: ' + err.message, 'error');
   });
 
@@ -776,14 +767,14 @@ function subscribeTopics(deviceId) {
   ];
   topics.forEach(t => {
     dev.mqttClient.subscribe(t, { qos: 1 }, err => {
-      if (err) log(deviceId, 'err', `Subscribe failed: ${t}`);
-      else     log(deviceId, 'sys', `Subscribed: ${t}`);
+      if (err) console.warn('[ERR] ' + deviceId + ' | ' + `Subscribe failed: ${t}`);
+      else     console.log('[SYS] ' + deviceId + ' | ' + `Subscribed: ${t}`);
     });
   });
 }
 
 function handleMessage(deviceId, topic, raw) {
-  log(deviceId, 'in', `[${shortTopic(topic)}] ${raw}`);
+  console.log('[IN]  ' + deviceId + ' | ' + `[${shortTopic(topic)}] ${raw}`);
   let data;
   try { data = JSON.parse(raw); } catch { return; }
 
@@ -802,7 +793,7 @@ function handleMessage(deviceId, topic, raw) {
       statHeartbeat.className = 'stat-val good';
     }
   } else if (type === 'info') {
-    log(deviceId, 'sys', `Device info: ${JSON.stringify(data)}`);
+    console.log('[SYS] ' + deviceId + ' | ' + `Device info: ${JSON.stringify(data)}`);
   }
 }
 
@@ -847,10 +838,10 @@ function sendLedCommand(deviceId, state) {
   const topic   = `device/${deviceId}/command`;
   dev.mqttClient.publish(topic, payload, { qos: 1 }, err => {
     if (err) {
-      log(deviceId, 'err', 'Publish failed: ' + err.message);
+      console.warn('[ERR] ' + deviceId + ' | ' + 'Publish failed: ' + err.message);
       toast('Command failed', 'error');
     } else {
-      log(deviceId, 'out', `[command] ${payload}`);
+      console.log('[OUT] ' + deviceId + ' | ' + `[command] ${payload}`);
       toast(state ? 'LED ON command sent' : 'LED OFF command sent', 'success');
       dev.ledState   = state === 1;
       dev.stats.led  = state === 1 ? 'ON' : 'OFF';
@@ -888,65 +879,6 @@ function setDeviceStatus(state) {
   if (state === 'online')      { deviceDot.classList.add('online');     deviceStatus.textContent = 'Online'; }
   else if (state === 'connecting') { deviceDot.classList.add('connecting'); deviceStatus.textContent = 'Waiting…'; }
   else                          { deviceStatus.textContent = 'Offline'; }
-}
-
-/* ─── QR CODE ───────────────────────────────────────────── */
-function buildQR(dev) {
-  qrCode.innerHTML = '';
-  const payload = JSON.stringify({ deviceId: dev.id, secret: dev.secret });
-  qrUrl.textContent = payload;
-  new QRCode(qrCode, {
-    text: payload, width: 148, height: 148,
-    colorDark: '#000000', colorLight: '#ffffff',
-    correctLevel: QRCode.CorrectLevel.M,
-  });
-}
-function handleCopyUrl() {
-  const dev = activeDeviceId ? devices.get(activeDeviceId) : null;
-  if (!dev) return;
-  const payload = JSON.stringify({ deviceId: dev.id, secret: dev.secret });
-  navigator.clipboard.writeText(payload)
-    .then(() => toast('QR payload copied!', 'success'))
-    .catch(() => toast('Copy failed', 'error'));
-}
-
-/* ─── LOG ────────────────────────────────────────────────── */
-function log(deviceId, type, msg) {
-  const entry = { type, msg, ts: new Date() };
-  if (deviceId) {
-    const dev = devices.get(deviceId);
-    if (dev) {
-      dev.logEntries.push(entry);
-      if (dev.logEntries.length > 120) dev.logEntries.shift();
-    }
-  }
-  if (deviceId === activeDeviceId || deviceId === null) appendLogEntry(entry);
-}
-
-function appendLogEntry(entry) {
-  const empty = logBody.querySelector('.log-empty');
-  if (empty) empty.remove();
-  const el = document.createElement('div');
-  el.className = `log-entry ${entry.type}`;
-  const ts   = entry.ts.toTimeString().slice(0, 8);
-  const dirs = { in: '↓IN ', out: '↑OUT', sys: 'SYS ', err: 'ERR ' };
-  el.innerHTML =
-    `<span class="log-time">${ts}</span>` +
-    `<span class="log-dir ${entry.type}">${dirs[entry.type] || entry.type.toUpperCase()}</span>` +
-    `<span class="log-msg">${escHtml(entry.msg)}</span>`;
-  logBody.appendChild(el);
-  logBody.scrollTop = logBody.scrollHeight;
-  while (logBody.children.length > 120) logBody.removeChild(logBody.firstChild);
-}
-
-function renderLog() {
-  logBody.innerHTML = '';
-  const dev = activeDeviceId ? devices.get(activeDeviceId) : null;
-  if (!dev || dev.logEntries.length === 0) {
-    logBody.innerHTML = '<div class="log-empty">No messages yet…</div>';
-    return;
-  }
-  dev.logEntries.forEach(e => appendLogEntry(e));
 }
 
 /* ─── TOAST ──────────────────────────────────────────────── */

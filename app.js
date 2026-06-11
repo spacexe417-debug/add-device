@@ -895,13 +895,13 @@ function setBrokerStatus(state) {
   brokerDot.className = 'status-dot';
   if (state === 'online')      { brokerDot.classList.add('online');     brokerLabel.textContent = 'Connected'; }
   else if (state === 'connecting') { brokerDot.classList.add('connecting'); brokerLabel.textContent = 'Connecting…'; }
-  else                          { brokerLabel.textContent = 'Disconnected'; }
+  else                          { brokerDot.classList.add('offline');   brokerLabel.textContent = 'Disconnected'; }
 }
 function setDeviceStatus(state) {
   deviceDot.className = 'status-dot';
   if (state === 'online')      { deviceDot.classList.add('online');     deviceStatus.textContent = 'Online'; }
   else if (state === 'connecting') { deviceDot.classList.add('connecting'); deviceStatus.textContent = 'Waiting…'; }
-  else                          { deviceStatus.textContent = 'Offline'; }
+  else                          { deviceDot.classList.add('offline');   deviceStatus.textContent = 'Offline'; }
 }
 
 /* ─── TOAST ──────────────────────────────────────────────── */
